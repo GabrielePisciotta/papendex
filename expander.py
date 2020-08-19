@@ -4,6 +4,7 @@ __author__ = 'Gabriele Pisciotta'
 from os import listdir
 from os.path import isfile, join, basename, splitext
 import json
+import gzip
 import argparse
 import re
 
@@ -21,8 +22,8 @@ def read_json_file(f):
 
 # Write json content in file
 def write_json_file(id, out_path, data):
-    with open(join(out_path, '{}.json'.format(id)), 'w') as outfile:
-        json.dump(data, outfile, indent=2)
+    with gzip.open(join(out_path, '{}.json'.format(id)), 'wt', encoding='utf-8') as outfile:
+        json.dump(data, outfile, indent=0)
 
 # Return an id related to the next file to be written
 def get_last_id(path):
