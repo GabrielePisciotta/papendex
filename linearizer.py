@@ -55,7 +55,7 @@ for f in list_of_files:
 
     for a in content['author']:
         if 'given' in a and 'family' in a:
-            text = "".join([text, " ", a['given'], " ", a['family']])
+            text = "".join([text, a['given'], " ", a['family']])
 
     if 'title' in content:
         text = "".join([text, ", ", content['title'][0]])
