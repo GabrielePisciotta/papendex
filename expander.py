@@ -43,8 +43,8 @@ def get_last_id(path):
 #args = parser.parse_args()
 #in_path = args.in_path
 #out_path = args.out_path
-in_path = '/mie/scompatt/'
-out_path = '/mie/expanded/'
+in_path = '/media/gabriele/TOSHIBA EXT/Ricerca/crossref_dump'
+out_path = '/media/gabriele/TOSHIBA EXT/Ricerca/expanded_dump'
 
 list_of_files = [ get_files_in_dir(in_path)[-1] ]
 for f in list_of_files:
