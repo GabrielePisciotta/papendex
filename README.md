@@ -13,14 +13,17 @@ JSON set of docs, and for each of them it will extract a string representing it 
 It will save in the Solr instance an object of the form:
 ```
 {
-'id': 648000, 
-'doi': '10.1002/(sici)1097-0231(199705)11:8<875::aid-rcm934>3.0.co;2-k', 
-'title': 'James L. Stephenson Scott A. McLuckey , Charge Reduction of Oligonucleotide Anions Via Gas-phase Electron Transfer to Xenon Cations, Rapid Commun. Mass Spectrom., 1997 5 , 10.1002/(sici)1097-0231(199705)11:8<875::aid-rcm934>3.0.co;2-k',
+'id': '10.1002/(sici)1097-0231(199705)11:8<875::aid-rcm934>3.0.co;2-k', 
+'bibref': 'James L. Stephenson Scott A. McLuckey , Charge Reduction of Oligonucleotide Anions Via Gas-phase Electron Transfer to Xenon Cations, Rapid Commun. Mass Spectrom., 1997 5 , 10.1002/(sici)1097-0231(199705)11:8<875::aid-rcm934>3.0.co;2-k',
 'original': '{"indexed": {"date-parts": [[2020, 3, 25]], "date-time": "2020-03-25T13:50:56Z", "timestamp": 1585144256746}, "reference-count": 0, "publisher": "Wiley", "issue": "8", "license": [{"URL": "http://doi.wiley.com/10.1002/tdm_license_1.1", [...]}'
 }
 
 ``` 
-where `id` is auto_increment and `original` is the original JSON document in Crossref.
+where `id` is the lowercased DOI and `original` is the original JSON document in Crossref. More in details: id is the unique key field, bibref is a textual field that is also indexed,
+original is a string field that is only stored.
+
+Run `_extracted` if you need to add already extracted files, otherwise you can run `_compressed` in order to extract and load.
+
 
 ---
 
