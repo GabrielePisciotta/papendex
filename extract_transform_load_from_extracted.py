@@ -68,64 +68,54 @@ def extract_string_from_metadata(content):
 
     return text
 
+def main():
+    start = time.time()
 
-start = time.time()
+    try:
+        solr = pysolr.Solr('http://localhost:8983/solr/ccc', always_commit=True, timeout=1000)
+        response = solr.ping()
+        print("Connection enstablished to Solr")
 
-solr = pysolr.Solr('http://localhost:8983/solr/ccc', always_commit=True, timeout=10000000)
-response = json.loads(solr.ping())
-if response['status'] != 'OK':
-    print("Can't enstablish a connection to Solr")
-    exit
-else:
-    print("Connection enstablished to Solr")
+    except:
+        print("Can't enstablish a connection to Solr")
+        exit()
+
+    json_file = 0
+    doc_in_json_file = 0
+
+    inpath = '/mie/scompatt'
+
+    file_list = get_files_in_dir(inpath)[:1000]
+
+    # For each file in the crossref compressed dump
+    for f in tqdm(file_list):
+
+        # Read it as a json object
+        content = read_json_file(join(inpath, f))
+
+        # Each element in the json object is a single document
+        elements = []
+
+        # Iterate through all the element in the chunk
+        for element in content['items']:
+            # For each document, create the structure of the object that will be updated in Solr
+            doc = {
+                "id": element['DOI'].lower(),
+                "bibref": extract_string_from_metadata(element).encode('utf-8'),
+                "original": json.dumps(element).encode('utf-8')
+            }
+
+            elements.append(doc)
+            # write_json_file(_id, "/media/gabriele/TOSHIBA EXT/Ricerca/docs", doc)
+            doc_in_json_file += 1
+
+        # Upload in Solr the list of elements
+        solr.add(elements)
+        json_file += 1
+
+    end = time.time()
+    print("Loaded {} docs from {} dumps Time ETL: {}".format(doc_in_json_file, json_file, (end - start)))
 
 
-_id = 0
-
-
-
-# For each json chunk in the crossref compressed dump
-doc_counter = 0
-
-inpath = '/mie/scompatt'
-
-for f in tqdm(get_files_in_dir(inpath)):
-    print("Doc: {}".format(doc_counter))
-    if doc_counter < 1000:
-        doc_counter +=1
-        continue
-
-    # Read it as a json object
-    content=read_json_file(join(inpath, f))
-
-    # Each element in the json object is a single document
-    elements = []
-
-    # Iterate through all the element in the chunk
-    for element in content['items']:
-
-        # For each document, create the structure of the object that will be updated in Solr
-        doc = {
-               "id": element['DOI'].lower(),
-               "bibref":extract_string_from_metadata(element).encode('utf-8'),
-               "original": json.dumps(element).encode('utf-8')
-               }
-
-        elements.append(doc)
-        #write_json_file(_id, "/media/gabriele/TOSHIBA EXT/Ricerca/docs", doc)
-        _id += 1
-
-
-    # Upload in Solr the list of elements
-    solr.add(elements)
-    #time.sleep(5)
-
-    # This is to stop at a specified number of dump's json
-    if doc_counter == 2000:
-        break
-    doc_counter += 1
-
-end = time.time()
-print("Loaded {} docs from {} dumps Time ETL: {}".format(_id, doc_counter, (end-start)))
-
-"""
+if __name__ == '__main__':
+    main()
