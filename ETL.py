@@ -1,6 +1,6 @@
 # Extract, Transform, Load script
 #
-# Take each json file from the crossref dump and create an object containing it that is loaded in Solr
+# Take each json file from the Crossref dump and create an object containing it that is loaded in Solr
 
 __author__ = 'Gabriele Pisciotta'
 
@@ -26,16 +26,6 @@ def read_json_file(f):
     with open(f) as data_file:
         data = json.load(data_file)
     return data
-
-# Write json content in file (gzipped)
-def write_json_file_c(id, out_path, data):
-    with gzip.open(join(out_path, '{}.json.gz'.format(id)), 'wt', encoding='utf-8') as outfile:
-        json.dump(data, outfile, indent=0)
-
-# Write json content in file
-def write_json_file(id, out_path, data):
-    with open(join(out_path, '{}.json'.format(id)), 'wt', encoding='utf-8') as outfile:
-        json.dump(data, outfile, indent=0)
 
 
 # Extract a string from the metadata
@@ -72,42 +62,6 @@ def extract_string_from_metadata(content):
 
     if 'DOI' in content:
         text = "".join([text, content['DOI'].lower()])
-
-    return text
-
-
-# Extract a string from the metadata
-def extract_string_from_metadata_2(content):
-    text = ""
-
-    if 'author' in content and len(content['author']) > 0:
-        for a in content['author']:
-            if 'given' in a and 'family' in a:
-                text = "".join([text, a['family'], " ", a['given'], ", "])
-
-    if 'title' in content and len(content['title']) > 0:
-        text = "".join([text, content['title'][0]], ", ")
-
-    if 'short-container-title' in content and len(content['short-container-title']) > 0:
-        text = "".join([text, content['short-container-title'][0]])
-
-    if 'issued' in content and 'date_parts' in content['issued'] and len(content['issued']['date_parts']) > 0:
-        text = "".join([text, content['issued']['date-parts'][0][0], ", "  ])
-
-    elif 'published-print' in content and 'date-parts' in content['published-print'] and len(content['published-print']['date-parts'][0]) > 0:
-        text = "".join([text, content['published-print']['date-parts'][0][0], ", "])
-
-    if 'volume' in content:
-        text = "".join([text, content['volume'], ", "])
-
-    if 'issue' in content:
-        text = "".join([text, content['issue'], ", "])
-
-    if 'page' in content:
-        text = "".join([text, content['page'], ", "])
-
-    if 'DOI' in content:
-        text = "".join([text, content['DOI'].lower(), ", "])
 
     return text
 
