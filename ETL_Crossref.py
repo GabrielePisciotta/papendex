@@ -82,11 +82,11 @@ def crossref_ETL(source='path', solr_address='http://localhost:8983/solr/crossre
 
     if source == 'path':
         inpath = '/mie/scompatt'
-        file_list = get_files_in_dir(inpath)[0:3000]
+        file_list = get_files_in_dir(inpath)
     else:
         print("Extracting Crossref dump... This may take a while.")
         crossref_dump_compressed = tarfile.open('/mie/crossref-data-2020-06.tar.gz')
-        file_list = crossref_dump_compressed.getmembers()[26098:]
+        file_list = crossref_dump_compressed.getmembers()
 
     # For each file in the crossref compressed dump
     for f in tqdm(file_list):
