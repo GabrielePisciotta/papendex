@@ -65,7 +65,7 @@ def extract_string_from_metadata(content):
 
     return text
 
-def main(source='path', solr_address='http://localhost:8983/solr/crossref'):
+def crossref_ETL(source='path', solr_address='http://localhost:8983/solr/crossref'):
     start = time.time()
 
     try:
@@ -125,5 +125,7 @@ def main(source='path', solr_address='http://localhost:8983/solr/crossref'):
     end = time.time()
     print("Loaded {} docs from {} dumps Time ETL: {}".format(doc_in_json_file, json_file, (end - start)))
 
+
+
 if __name__ == '__main__':
-    main(source='compressed', solr_address='http://localhost:8983/solr/crossref_without_metadata')
+    crossref_ETL(source='compressed', solr_address='http://localhost:8983/solr/crossref')
