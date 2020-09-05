@@ -101,7 +101,7 @@ def orcid_ETL(source='compressed', solr_address='http://localhost:8983/solr/orci
                                         if b1 is not None:
                                             c1 = b1.find('{http://www.orcid.org/ns/common}external-id-value')
                                             if c1 is not None:
-                                                dois.append(c1.text.lower())
+                                                dois.append(c1.text.lower().strip())
 
                                 except AttributeError as ex:
                                     for xx in to_commit:
@@ -128,7 +128,7 @@ def orcid_ETL(source='compressed', solr_address='http://localhost:8983/solr/orci
                                     'authors': json.dumps(authors)
                                 })
 
-                        if len(to_commit) > 10000:
+                        if len(to_commit) > 100000:
                             solr.add(to_commit)
                             to_commit.clear()
                             gc.collect()
