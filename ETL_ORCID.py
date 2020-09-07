@@ -12,6 +12,8 @@ import os
 from re import sub, match
 from urllib.parse import unquote
 import gc
+from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 
 # Get list of file inside the dir
 def get_files_in_dir(path):
@@ -19,29 +21,73 @@ def get_files_in_dir(path):
     list_of_files.sort(key=lambda f: int(re.sub('\D', '', f)))
     return list_of_files
 
-def get_author_list(solr, doi):
-    query = solr.search(q='id:"{}"'.format(doi))
-    author_list = [q['authors'] for q in query]
-    if len(author_list) == 0:
-        return  json.loads('[]')
-    else:
-        return json.loads(author_list[0])
+def is_valid(id_string):
+    doi = normalise(id_string, include_prefix=False)
 
-def is_valid(self, id_string):
-    doi = self.normalise(id_string, include_prefix=False)
-
-    if doi is None or match("^doi:10\\..+/.+$", doi) is None:
-        return False
+    if doi is None or match("^10\\..+/.+$", doi) is None:
+        return None
     else:
         return doi
 
-def normalise(self, id_string, include_prefix=False):
+def normalise(id_string, include_prefix=False):
     try:
+        id_string = id_string.replace("doi:", "")
+        id_string = id_string.replace("DOI:", "")
+        id_string = id_string.replace("https://doi.org/", "")
+        id_string = id_string.replace("https://doi.org/", "")
+        id_string = id_string.replace("http://dx.doi.org/", "")
+
         doi_string = sub("\0+", "", sub("\s+", "", unquote(id_string[id_string.index("10."):])))
-        return "%s%s" % (self.p if include_prefix else "", doi_string.lower().strip())
+        return doi_string.lower().strip()
     except:  # Any error in processing the DOI will return None
         return None
 
+class Worker():
+
+    @staticmethod
+    def query_and_deduplicate(to_store_items):
+        try:
+            solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=1000)
+            solr.ping()
+
+        except:
+            print("Can't enstablish a connection to Solr")
+            exit()
+
+        doi, authors_to_store = to_store_items
+
+        # Get the author list object
+        query = solr.search(q='id:"{}"'.format(doi))
+        author_list = [q['authors'] for q in query]
+        if len(author_list) == 0:
+            authors = json.loads('[]')
+        else:
+            authors = json.loads(author_list[0])
+
+        solr.get_session().close()
+
+        # Combine the stored authors with the discovered authors in the batch
+        authors += authors_to_store
+
+        # Deduplicate them
+        authors = [dict(t) for t in {tuple(d.items()) for d in authors}]
+
+        return {
+            'id': doi,
+            'authors': json.dumps(authors)
+        }
+
+
+def store_data(solr, to_store):
+    w = Worker()
+
+    with multiprocessing.Pool(8) as executor:
+        future_results = executor.map(w.query_and_deduplicate , to_store.items())
+        to_commit = [result for result in future_results]
+
+    solr.add(to_commit)
+    to_commit.clear()
+    gc.collect()
 
 def orcid_ETL(source='compressed', solr_address='http://localhost:8983/solr/orcid'):
     try:
@@ -58,20 +104,21 @@ def orcid_ETL(source='compressed', solr_address='http://localhost:8983/solr/orci
         file_list = get_files_in_dir(inpath)
     else:
         print("Extracting Orcid dump... This may take a while.")
-        orcid_dump_compressed = zipfile.ZipFile('/mie/orcid/orcid.zip')
-        #orcid_dump_compressed = zipfile.ZipFile("/home/gabriele/Universita/Ricerca/OpenCitations CCC/progetti/indexer/papendex/0.zip")
-        activities_dir = [x for x in orcid_dump_compressed.namelist() if 'summaries' in x]
+        orcid_dump_compressed = zipfile.ZipFile("/home/gabriele/Universita/Ricerca/OpenCitations CCC/progetti/indexer/papendex/0.zip")
+        activities_dir = [x for x in orcid_dump_compressed.namelist()]
+
+        #orcid_dump_compressed = zipfile.ZipFile('/mie/orcid/orcid.zip')
+        #activities_dir = [x for x in orcid_dump_compressed.namelist() if 'summaries' in x]
+
         start = time.time()
-        to_commit = []
+        to_store = {}
 
         for a in activities_dir:
-            print(a)
             print("Extracting {}".format(a))
 
             orcid_dump_compressed.extract(a)
 
             with tarfile.open(a, 'r:gz') as extracted_archive:
-
                 dir_in_extracted_archive = extracted_archive.getmembers()
                 for f in tqdm(dir_in_extracted_archive):
                     f = extracted_archive.extractfile(f)
@@ -120,37 +167,36 @@ def orcid_ETL(source='compressed', solr_address='http://localhost:8983/solr/orci
                                             if c1 is not None:
                                                 normalised_doi = is_valid(c1.text)
                                                 if normalised_doi is not None:
-                                                    dois.append(c1.text)
+                                                    dois.append(normalised_doi)
 
                                 except AttributeError as ex:
-                                    for xx in to_commit:
-                                        print(xx)
-                                    print(ex)
+                                    print(ex.with_traceback())
                                     continue
 
                         for doi in dois:
 
-                            # Get the author list object
-                            authors = get_author_list(solr, doi)
+                            # If the doi is already present in the local batch
+                            if to_store.__contains__(doi):
+                                actual_values = to_store[doi]
 
-                            # Check if author is not present
-                            if len(list(filter(lambda x: x["orcid"] == orcid, authors))) == 0:
-                                authors.append({
+                                # if the author does not exist
+                                if len(list(filter(lambda x: x["orcid"] == orcid, actual_values))) == 0:
+                                    actual_values.append({
                                     'orcid': orcid,
                                     'given_names': given_names,
                                     'family_name': family_name
                                 })
+                                to_store[doi] = actual_values
 
-                                # Update it
-                                to_commit.append({
-                                    'id': doi,
-                                    'authors': json.dumps(authors)
-                                })
+                            else:
+                                to_store[doi] = [{
+                                    'orcid': orcid,
+                                    'given_names': given_names,
+                                    'family_name': family_name
+                                }]
 
-                        if len(to_commit) > 100000:
-                            solr.add(to_commit)
-                            to_commit.clear()
-                            gc.collect()
+                        if len(to_store) > 100000:
+                            store_data(solr, to_store)
 
 
                     except Exception as ex:
@@ -159,9 +205,8 @@ def orcid_ETL(source='compressed', solr_address='http://localhost:8983/solr/orci
                         continue
 
                 # Flush...
-                if len(to_commit) != 0:
-                    solr.add(to_commit)
-                    to_commit.clear
+                if len(to_store) != 0:
+                    store_data(solr, to_store)
                 os.remove(a)
 
     end = time.time()
