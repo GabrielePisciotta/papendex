@@ -3,16 +3,14 @@ from tqdm import tqdm
 import json
 import pysolr
 import time
-import gzip
 from os import listdir
-from os.path import isfile, join, basename, splitext
+from os.path import isfile, join
 import re
 import tarfile
-import collections
 import zipfile
 import os
-import shutil
-from io import BytesIO, StringIO
+from re import sub, match
+from urllib.parse import unquote
 import gc
 
 # Get list of file inside the dir
@@ -29,7 +27,20 @@ def get_author_list(solr, doi):
     else:
         return json.loads(author_list[0])
 
+def is_valid(self, id_string):
+    doi = self.normalise(id_string, include_prefix=False)
 
+    if doi is None or match("^doi:10\\..+/.+$", doi) is None:
+        return False
+    else:
+        return doi
+
+def normalise(self, id_string, include_prefix=False):
+    try:
+        doi_string = sub("\0+", "", sub("\s+", "", unquote(id_string[id_string.index("10."):])))
+        return "%s%s" % (self.p if include_prefix else "", doi_string.lower().strip())
+    except:  # Any error in processing the DOI will return None
+        return None
 
 
 def orcid_ETL(source='compressed', solr_address='http://localhost:8983/solr/orcid'):
@@ -64,6 +75,7 @@ def orcid_ETL(source='compressed', solr_address='http://localhost:8983/solr/orci
                 dir_in_extracted_archive = extracted_archive.getmembers()
                 for f in tqdm(dir_in_extracted_archive):
                     f = extracted_archive.extractfile(f)
+
                     # When extracting the dump, it may happen that is read something that isn't a file
                     if f is None:
                         continue
@@ -92,6 +104,10 @@ def orcid_ETL(source='compressed', solr_address='http://localhost:8983/solr/orci
                             .findall('{http://www.orcid.org/ns/activities}group')
 
                         dois = []
+
+                        # It's possible that are listed multiple works for each author.
+                        # This part is to extract each DOI, check if is valid and in the end
+                        # save it as normalised DOI.
                         for g in groups:
                             if g is not None:
                                 try:
@@ -100,8 +116,11 @@ def orcid_ETL(source='compressed', solr_address='http://localhost:8983/solr/orci
                                         b1 = a1.find('{http://www.orcid.org/ns/common}external-id')
                                         if b1 is not None:
                                             c1 = b1.find('{http://www.orcid.org/ns/common}external-id-value')
+
                                             if c1 is not None:
-                                                dois.append(c1.text.lower().strip())
+                                                normalised_doi = is_valid(c1.text)
+                                                if normalised_doi is not None:
+                                                    dois.append(c1.text)
 
                                 except AttributeError as ex:
                                     for xx in to_commit:
