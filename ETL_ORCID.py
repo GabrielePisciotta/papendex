@@ -12,8 +12,8 @@ import os
 from re import sub, match
 from urllib.parse import unquote
 import gc
-from concurrent.futures import ThreadPoolExecutor
 import multiprocessing
+from threading import Thread
 
 # Get list of file inside the dir
 def get_files_in_dir(path):
@@ -21,50 +21,60 @@ def get_files_in_dir(path):
     list_of_files.sort(key=lambda f: int(re.sub('\D', '', f)))
     return list_of_files
 
-def is_valid(id_string):
-    doi = normalise(id_string, include_prefix=False)
+def is_valid_doi(id_string):
+    try:
+        id_string = id_string.replace("doi:", "")
+        id_string = id_string.replace("DOI:", "")
+        id_string = id_string.replace("https://doi.org/", "")
+        id_string = id_string.replace("http://doi.org/", "")
+        id_string = id_string.replace("http://dx.doi.org/", "")
+        id_string = id_string.replace("https://dx.doi.org/", "")
+        if id_string[-1] == '\\': id_string = id_string[:-1]  # remove the backslash found at the end of some DOI
+
+        doi = sub("\0+", "", sub("\s+", "", unquote(id_string[id_string.index("10."):])))
+
+        doi = doi.lower().strip()
+    except:
+        return None
 
     if doi is None or match("^10\\..+/.+$", doi) is None:
         return None
     else:
         return doi
 
-def normalise(id_string, include_prefix=False):
-    try:
-        id_string = id_string.replace("doi:", "")
-        id_string = id_string.replace("DOI:", "")
-        id_string = id_string.replace("https://doi.org/", "")
-        id_string = id_string.replace("https://doi.org/", "")
-        id_string = id_string.replace("http://dx.doi.org/", "")
-
-        doi_string = sub("\0+", "", sub("\s+", "", unquote(id_string[id_string.index("10."):])))
-        return doi_string.lower().strip()
-    except:  # Any error in processing the DOI will return None
+def is_valid_orcid(orcid):
+    if orcid is not None and match("^([0-9]{4}-){3}[0-9]{3}[0-9X]$", orcid):
+        return True
+    else:
         return None
+
 
 class Worker():
 
     @staticmethod
     def query_and_deduplicate(to_store_items):
         try:
-            solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=1000)
-            solr.ping()
+            local_solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=50)
+            local_solr.ping()
 
         except:
             print("Can't enstablish a connection to Solr")
-            exit()
+            return None
 
         doi, authors_to_store = to_store_items
 
-        # Get the author list object
-        query = solr.search(q='id:"{}"'.format(doi))
+        # Get the authors list
+        query = local_solr.search(q='id:"{}"'.format(doi))
         author_list = [q['authors'] for q in query]
+
+        # Close the socket
+        local_solr.get_session().close()
+
+        # Check if it's empty
         if len(author_list) == 0:
-            authors = json.loads('[]')
+            authors = []
         else:
             authors = json.loads(author_list[0])
-
-        solr.get_session().close()
 
         # Combine the stored authors with the discovered authors in the batch
         authors += authors_to_store
@@ -78,34 +88,52 @@ class Worker():
         }
 
 
-def store_data(solr, to_store):
+
+def thread_parallel(func):
+    def parallel_func(*args, **kw):
+        p = Thread(target=func, args=args, kwargs=kw)
+        p.daemon = False
+        p.start()
+    return parallel_func
+
+#@thread_parallel
+def store_data(to_store):
+    solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=50)
+
+    print("Len of to_store: {}".format(len(to_store)))
+
     w = Worker()
 
-    with multiprocessing.Pool(8) as executor:
+    with multiprocessing.Pool(processes=8) as executor:
         future_results = executor.map(w.query_and_deduplicate , to_store.items())
-        to_commit = [result for result in future_results]
+        to_add = [result for result in future_results]
 
-    solr.add(to_commit)
-    to_commit.clear()
-    gc.collect()
-
-def orcid_ETL(solr_address='http://localhost:8983/solr/orcid'):
+    # Add it
     try:
-        solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=1000)
-        solr.ping()
-        print("Connection enstablished to Solr")
+        response = solr.add(to_add)
+
+        # Get response
+        response = json.loads(response)
+
+        # If something goes wrong, then print to file
+        if response['responseHeader']['status'] != 0:
+            raise Exception
 
     except:
-        print("Can't enstablish a connection to Solr")
-        exit()
+        # If something goes wrong, then print to file
+        if response['responseHeader']['status'] != 0:
+            with open('error_commit.txt', 'a') as f:
+                    f.write("%s\n" % to_add)
 
+
+def orcid_ETL():
 
     print("Extracting Orcid dump... This may take a while.")
-    #orcid_dump_compressed = zipfile.ZipFile("/home/gabriele/Universita/Ricerca/OpenCitations CCC/progetti/indexer/papendex/0.zip")
-    #activities_dir = [x for x in orcid_dump_compressed.namelist()]
+    orcid_dump_compressed = zipfile.ZipFile("/home/gabriele/Universita/Ricerca/OpenCitations CCC/progetti/indexer/papendex/0.zip")
+    activities_dir = [x for x in orcid_dump_compressed.namelist()]
 
-    orcid_dump_compressed = zipfile.ZipFile('/mie/orcid/orcid.zip')
-    activities_dir = [x for x in orcid_dump_compressed.namelist() if 'summaries' in x]
+    #orcid_dump_compressed = zipfile.ZipFile('/mie/orcid/orcid.zip')
+    #activities_dir = [x for x in orcid_dump_compressed.namelist() if 'summaries' in x]
 
     start = time.time()
     to_store = {}
@@ -114,7 +142,6 @@ def orcid_ETL(solr_address='http://localhost:8983/solr/orcid'):
         print("Extracting {}".format(a))
 
         orcid_dump_compressed.extract(a)
-
         with tarfile.open(a, 'r:gz') as extracted_archive:
             dir_in_extracted_archive = extracted_archive.getmembers()
             for f in tqdm(dir_in_extracted_archive):
@@ -134,8 +161,9 @@ def orcid_ETL(solr_address='http://localhost:8983/solr/orcid'):
                         .find('{http://www.orcid.org/ns/common}path') \
                         .text
 
-                    if orcid is None:
+                    if orcid is None or is_valid_orcid(orcid) is None:
                         continue
+
 
                     name = root.find('{http://www.orcid.org/ns/person}person') \
                         .find('{http://www.orcid.org/ns/person}name')
@@ -162,7 +190,7 @@ def orcid_ETL(solr_address='http://localhost:8983/solr/orcid'):
                                         c1 = b1.find('{http://www.orcid.org/ns/common}external-id-value')
 
                                         if c1 is not None:
-                                            normalised_doi = is_valid(c1.text)
+                                            normalised_doi = is_valid_doi(c1.text)
                                             if normalised_doi is not None:
                                                 dois.append(normalised_doi)
 
@@ -192,18 +220,20 @@ def orcid_ETL(solr_address='http://localhost:8983/solr/orcid'):
                                 'family_name': family_name
                             }]
 
-                    if len(to_store) > 100_000:
-                        store_data(solr, to_store)
+                    if len(to_store) > 5_000:
+                        store_data(to_store)
+                        to_store.clear()
 
 
                 except Exception as ex:
                     tree.write('out.xml', pretty_print = True)
-                    #print(ex)
                     continue
 
             # Flush...
             if len(to_store) != 0:
-                store_data(solr, to_store)
+                store_data(to_store)
+                to_store.clear()
+
             os.remove(a)
 
     end = time.time()
