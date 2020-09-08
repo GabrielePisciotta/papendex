@@ -32,12 +32,11 @@ def is_valid_doi(id_string):
         if id_string[-1] == '\\': id_string = id_string[:-1]  # remove the backslash found at the end of some DOI
 
         doi = sub("\0+", "", sub("\s+", "", unquote(id_string[id_string.index("10."):])))
-
         doi = doi.lower().strip()
     except:
         return None
 
-    if doi is None or match("^10\\..+/.+$", doi) is None:
+    if doi is None or doi.__contains__('"') or match("^10\\..+/.+$", doi) is None:
         return None
     else:
         return doi
@@ -50,31 +49,27 @@ def is_valid_orcid(orcid):
 
 
 class Worker():
+    def __init__(self):
+        self.list = multiprocessing.Manager().list()
 
-    @staticmethod
-    def query_and_deduplicate(to_store_items):
-        try:
-            local_solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=50)
-            local_solr.ping()
-
-        except:
-            print("Can't enstablish a connection to Solr")
-            return None
+    def query_and_deduplicate(self, to_store_items):
 
         doi, authors_to_store = to_store_items
 
+        local_solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=100)
+
+
         # Get the authors list
         query = local_solr.search(q='id:"{}"'.format(doi))
-        author_list = [q['authors'] for q in query]
+
+        # Check if it's empty
+        if len(query) == 0:
+            authors = []
+        else:
+            authors = json.loads([q['authors'] for q in query][0])
 
         # Close the socket
         local_solr.get_session().close()
-
-        # Check if it's empty
-        if len(author_list) == 0:
-            authors = []
-        else:
-            authors = json.loads(author_list[0])
 
         # Combine the stored authors with the discovered authors in the batch
         authors += authors_to_store
@@ -82,10 +77,10 @@ class Worker():
         # Deduplicate them
         authors = [dict(t) for t in {tuple(d.items()) for d in authors}]
 
-        return {
-            'id': doi,
-            'authors': json.dumps(authors)
-        }
+        self.list.append({
+            "id": doi,
+            "authors": json.dumps(authors)
+        })
 
 
 
@@ -98,42 +93,44 @@ def thread_parallel(func):
 
 #@thread_parallel
 def store_data(to_store):
-    solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=50)
-
-    print("Len of to_store: {}".format(len(to_store)))
-
-    w = Worker()
-
-    with multiprocessing.Pool(processes=8) as executor:
-        future_results = executor.map(w.query_and_deduplicate , to_store.items())
-        to_add = [result for result in future_results]
-
-    # Add it
     try:
+        solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=100)
+
+        w = Worker()
+
+        with multiprocessing.Pool(processes=16) as executor:
+            future_results = executor.map(w.query_and_deduplicate, to_store.items())
+            [result for result in future_results]
+
+        to_add = list(w.list)
+        #to_add = [w.query_and_deduplicate(items) for items in to_store.items()]
+
+        # Add it
         response = solr.add(to_add)
 
         # Get response
         response = json.loads(response)
+        solr.get_session().close()
 
         # If something goes wrong, then print to file
         if response['responseHeader']['status'] != 0:
             raise Exception
 
-    except:
+    except Exception as e:
+        print(e)
         # If something goes wrong, then print to file
-        if response['responseHeader']['status'] != 0:
-            with open('error_commit.txt', 'a') as f:
-                    f.write("%s\n" % to_add)
+        with open('error_commit.txt', 'a') as f:
+            f.write("{},\n".format( json.dumps(to_store) ))
 
 
 def orcid_ETL():
 
     print("Extracting Orcid dump... This may take a while.")
-    orcid_dump_compressed = zipfile.ZipFile("/home/gabriele/Universita/Ricerca/OpenCitations CCC/progetti/indexer/papendex/0.zip")
-    activities_dir = [x for x in orcid_dump_compressed.namelist()]
+    #orcid_dump_compressed = zipfile.ZipFile("/home/gabriele/Universita/Ricerca/OpenCitations CCC/progetti/indexer/papendex/0.zip")
+    #activities_dir = [x for x in orcid_dump_compressed.namelist()]
 
-    #orcid_dump_compressed = zipfile.ZipFile('/mie/orcid/orcid.zip')
-    #activities_dir = [x for x in orcid_dump_compressed.namelist() if 'summaries' in x]
+    orcid_dump_compressed = zipfile.ZipFile('/mie/orcid/orcid.zip')
+    activities_dir = [x for x in orcid_dump_compressed.namelist() if 'summaries' in x]
 
     start = time.time()
     to_store = {}
@@ -220,24 +217,50 @@ def orcid_ETL():
                                 'family_name': family_name
                             }]
 
-                    if len(to_store) > 5_000:
-                        store_data(to_store)
-                        to_store.clear()
-
-
                 except Exception as ex:
                     tree.write('out.xml', pretty_print = True)
                     continue
 
+                if len(to_store) > 50_000:
+                    store_data(to_store)
+                    to_store = {}
+                    
             # Flush...
             if len(to_store) != 0:
                 store_data(to_store)
-                to_store.clear()
+                to_store = {}
 
             os.remove(a)
 
     end = time.time()
     print("Processed in {:.3f}s".format((end-start)))
 
+def load_error_commit():
+    solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=1000)
+
+    with open('error_commit.txt', 'r') as f:
+        lines = f.read().split('}],')
+        for line in lines:
+            line += "}]}"
+            line = line.replace("'", '"')
+            print(line)
+            obj = json.loads(line)
+            w = Worker()
+            try:
+                response = solr.add(w.query_and_deduplicate(obj))
+
+                # Get response
+                response = json.loads(response)
+
+                # If something goes wrong, then print to file
+                if response['responseHeader']['status'] != 0:
+                    raise Exception
+
+            except:
+                # If something goes wrong, then print to file
+                with open('error_commit.txt', 'a') as f:
+                    f.write("%s\n" % obj)
+
 if __name__ == '__main__':
     orcid_ETL()
+    #load_error_commit()
