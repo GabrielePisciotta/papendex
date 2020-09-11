@@ -36,7 +36,7 @@ def is_valid_doi(id_string):
     except:
         return None
 
-    if doi is None or doi.__contains__('"') or match("^10\\..+/.+$", doi) is None:
+    if doi is None or match("^10\\..+/.+$", doi) is None:
         return None
     else:
         return doi
@@ -55,9 +55,7 @@ class Worker():
     def query_and_deduplicate(self, to_store_items):
 
         doi, authors_to_store = to_store_items
-
         local_solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=100)
-
 
         # Get the authors list
         query = local_solr.search(q='id:"{}"'.format(doi))
@@ -91,6 +89,20 @@ def thread_parallel(func):
         p.start()
     return parallel_func
 
+def write_to_file(to_store):
+    file_id = 0
+    for doi, authors_to_store in to_store.items():
+
+        with open(os.path.join('docs', '{}.json'.format(file_id)), 'w') as f:
+            # Deduplicate them
+            authors = [dict(t) for t in {tuple(d.items()) for d in authors_to_store}]
+            obj = {
+                "id": "{}".format(json.dumps(doi)),
+                "authors": json.dumps(authors)
+            }
+            json.dump(obj, f)
+        file_id += 1
+
 #@thread_parallel
 def store_data(to_store):
     try:
@@ -98,7 +110,7 @@ def store_data(to_store):
 
         w = Worker()
 
-        with multiprocessing.Pool(processes=16) as executor:
+        with multiprocessing.Pool(processes=8) as executor:
             future_results = executor.map(w.query_and_deduplicate, to_store.items())
             [result for result in future_results]
 
@@ -111,7 +123,7 @@ def store_data(to_store):
         # Get response
         response = json.loads(response)
         solr.get_session().close()
-
+        gc.collect()
         # If something goes wrong, then print to file
         if response['responseHeader']['status'] != 0:
             raise Exception
@@ -158,7 +170,7 @@ def orcid_ETL():
                         .find('{http://www.orcid.org/ns/common}path') \
                         .text
 
-                    if orcid is None or is_valid_orcid(orcid) is None:
+                    if orcid is None: #or is_valid_orcid(orcid) is None:
                         continue
 
 
@@ -184,12 +196,16 @@ def orcid_ETL():
                                 if a1 is not None:
                                     b1 = a1.find('{http://www.orcid.org/ns/common}external-id')
                                     if b1 is not None:
-                                        c1 = b1.find('{http://www.orcid.org/ns/common}external-id-value')
+                                        type = b1.find('{http://www.orcid.org/ns/common}external-id-type')
 
-                                        if c1 is not None:
-                                            normalised_doi = is_valid_doi(c1.text)
-                                            if normalised_doi is not None:
-                                                dois.append(normalised_doi)
+                                        if type is not None and type.text == 'doi':
+                                            c1 = b1.find('{http://www.orcid.org/ns/common}external-id-normalized')
+                                            if c1 is not None:
+                                                normalised_doi = is_valid_doi(c1.text)
+                                                if normalised_doi is not None:
+                                                    dois.append(normalised_doi)
+                                                else:
+                                                    print("Found non-normalised DOI: {}".format(normalised_doi))
 
                             except AttributeError as ex:
                                 print(ex.with_traceback())
@@ -221,15 +237,14 @@ def orcid_ETL():
                     tree.write('out.xml', pretty_print = True)
                     continue
 
-                if len(to_store) > 50_000:
+                if len(to_store) > 500_000:
                     store_data(to_store)
                     to_store = {}
-                    
+
             # Flush...
             if len(to_store) != 0:
                 store_data(to_store)
                 to_store = {}
-
             os.remove(a)
 
     end = time.time()
