@@ -9,7 +9,7 @@ import re
 import requests
 from urllib.parse import quote
 import json
-
+import xmltodict
 def crossref_query_bibref(filename='benchmark/benchmark_queries_from_ccc.csv', s=","):
     df = shuffle(pd.read_csv(filename, sep=s))
 
@@ -70,7 +70,7 @@ def run_benchmark_localcrossref_bibref(filename='benchmark/benchmark_queries_fro
         time_query += time_query_end-time_query_start
 
         if len(results) < 1:
-            print("[len = {}] Error with {}".format(len(results),query))
+            #print("[len = {}] Error with {}".format(len(results),query))
             continue
 
         time_filtering_start = time.time()
@@ -117,7 +117,7 @@ def run_benchmark_localcrossref_doi(filename='benchmark/benchmark_queries_from_c
         time_query += time_query_end-time_query_start
 
         if len(results) != 1:
-            print("[len = {}] Error with {}".format(len(results),query))
+            #print("[len = {}] Error with {}".format(len(results),query))
             continue
 
         time_filtering_start = time.time()
@@ -140,22 +140,109 @@ def run_benchmark_localcrossref_doi(filename='benchmark/benchmark_queries_from_c
     print("Mean time query: {:.5f}s".format(time_query/200))
     print("Mean time filtering: {:.5f}s".format(time_filtering/200))
 
+def dict_get(d, key_list): # Took from CCC
+    if key_list:
+        if type(d) is dict:
+            k = key_list[0]
+            if k in d:
+                return dict_get(d[k], key_list[1:])
+            else:
+                return None
+        elif type(d) is list:
+            result = []
+            for item in d:
+                value = [dict_get(item, key_list)]
+                if value is not None:
+                    result += value
+            return result
+        else:
+            return None
+    else:
+        return d
 
-def run_benchmark_orcid_query_doi(filename='benchmark/benchmark_dois_orcid.csv'):
+
+def create_dataset_orcid():
+    headers = {"User-Agent": "SPACIN / CrossrefProcessor (via OpenCitations - http://opencitations.net; "
+                                         "mailto:contact@opencitations.net)"}
+    filename = 'benchmark/benchmark_queries_from_ccc.csv'
+    df = pd.read_csv(filename)
+    __api_url = "https://pub.orcid.org/v2.1/search?q="
+    sec_to_wait = 10,
+    max_iteration = 6,
+    timeout = 30,
+    orcids = []
+    iter = 0
+
+    for _, row in tqdm(df.iterrows(), total=df.shape[0]):
+        doi_string = row['known_doi']
+
+        cur_query = "doi-self:\"%s\"" % doi_string
+        doi_string_l = doi_string.lower()
+        doi_string_u = doi_string.upper()
+        if doi_string_l != doi_string or doi_string_u != doi_string:
+            cur_query = "(" + cur_query
+            if doi_string_l != doi_string:
+                cur_query += " OR doi-self:" + doi_string_l
+            if doi_string_u != doi_string:
+                cur_query += " OR doi-self:" + doi_string_u
+            cur_query += ")"
+
+        response = requests.get("https://pub.orcid.org/v2.1/search?q=" + quote(cur_query), headers={"Accept": "application/json"}, timeout=100)
+        if response.status_code != 200:
+            retry = 0
+            while response.status_code != 200 and retry < 3:
+                response = requests.get("https://pub.orcid.org/v2.1/search?q=" + quote(cur_query), timeout=100)
+                retry += 1
+            if retry == 3:
+                print("Cant find {}".format(doi_string))
+                orcids.append(json.dumps(['']))
+
+        else:
+            resulting_orcid = []
+            results = json.loads(response.text)['result']
+            for orcid in results:
+                resulting_orcid.append(orcid['orcid-identifier']['path'])
+            orcids.append(json.dumps(resulting_orcid))
+        iter +=1
+        print(iter, " ", len(orcids))
+
+    df2 = pd.DataFrame({'doi' : df['known_doi'], 'results_from_orcid': orcids})
+    df2.to_csv('benchmark/benchmark_dois_orcid_accuracy.csv', index=False)
+
+def run_benchmark_orcid_query_doi(filename='benchmark/benchmark_dois_orcid_accuracy.csv'):
     df = shuffle(pd.read_csv(filename, sep=','))
     solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=False, timeout=100)
     print("Running benchmark")
-
+    not_found = 0
     start = time.time()
     for _, row in tqdm(df.iterrows(), total=df.shape[0]):
         doi = row['doi']
+        should_be = row['results_from_orcid']
+        should_be = json.loads(should_be)
+
         query = 'id:"{}"'.format(doi)
         results = solr.search(fl='*,score', q=query)
 
         if len(results) != 1:
-            print("[len = {}] Error with {}".format(len(results),query))
+            #print("[len = {}] Error with {}".format(len(results),query))
             continue
+
+        #authors = [r['authors'] for r in results]
+        authors_found = json.loads([r['authors'] for r in results][0])
+        orcid_found = [a['orcid'] for a in authors_found]
+        #print(orcid_found, "\n", should_be, "\n\n")
+
+        for a in should_be:
+            #print(a)
+            if a not in orcid_found:
+                not_found +=1
+                print("doi: ", doi, "should be: ", should_be, " but found: ", orcid_found )
+                break
+
+    accuracy = (len(df)-not_found)*100/len(df)
+
     end = time.time()
+    print("Accuracy: {}".format(accuracy))
     print("Total time for DOI queries (ORCID): {:.3f}s".format((end-start)))
     print("Mean time elapsed for a DOI query (ORCID): {:.3f}s".format((end-start)/200))
 
@@ -180,7 +267,7 @@ def orcid_query_doi(filename='benchmark/benchmark_dois_orcid.csv', s=","):
         response = requests.get("https://pub.orcid.org/v2.1/search?q=" + quote(cur_query), timeout=100)
         if response.status_code != 200:
             retry = 0
-            while response.status_code is not 200 and retry < 3:
+            while response.status_code != 200 and retry < 3:
                 response = requests.get("https://pub.orcid.org/v2.1/search?q=" + quote(cur_query), timeout=100)
                 retry += 1
             if retry == 3:
@@ -192,11 +279,13 @@ def orcid_query_doi(filename='benchmark/benchmark_dois_orcid.csv', s=","):
     end = time.time()
     print("Time elapsed for queries DOI: {:.3f}s".format((end - start)))
     print("Mean time query DOI: {:.5f}".format((end - start) / 200))
+
 if __name__ == '__main__':
     #crossref_query_bibref()
     #crossref_query_doi()
-    run_benchmark_orcid_query_doi()
     #orcid_query_doi()
+    run_benchmark_orcid_query_doi()
     #run_benchmark_localcrossref_bibref()
     #run_benchmark_localcrossref_doi()
+    #create_dataset_orcid()
 
