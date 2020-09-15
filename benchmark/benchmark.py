@@ -10,6 +10,7 @@ import requests
 from urllib.parse import quote
 import json
 import xmltodict
+import ast
 def crossref_query_bibref(filename='benchmark/benchmark_queries_from_ccc.csv', s=","):
     df = shuffle(pd.read_csv(filename, sep=s))
 
@@ -198,7 +199,7 @@ def create_dataset_orcid():
                 orcids.append(json.dumps(['']))
 
         else:
-            resulting_orcid = []
+            resulting_orcid = ['']
             results = json.loads(response.text)['result']
             for orcid in results:
                 resulting_orcid.append(orcid['orcid-identifier']['path'])
@@ -210,7 +211,7 @@ def create_dataset_orcid():
     df2.to_csv('benchmark/benchmark_dois_orcid_accuracy.csv', index=False)
 
 def run_benchmark_orcid_query_doi(filename='benchmark/benchmark_dois_orcid_accuracy.csv'):
-    df = shuffle(pd.read_csv(filename, sep=','))
+    df = shuffle(pd.read_csv(filename, sep=';'))
     solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=False, timeout=100)
     print("Running benchmark")
     not_found = 0
@@ -218,29 +219,33 @@ def run_benchmark_orcid_query_doi(filename='benchmark/benchmark_dois_orcid_accur
     for _, row in tqdm(df.iterrows(), total=df.shape[0]):
         doi = row['doi']
         should_be = row['results_from_orcid']
-        should_be = json.loads(should_be)
+        should_be = should_be.replace("[", "").replace("]", "").replace(" ", "")
+        should_be = should_be.split(",")
+        if should_be[0] == "":
+            should_be = []
+
+        #should_be = json.loads(should_be)
 
         query = 'id:"{}"'.format(doi)
         results = solr.search(fl='*,score', q=query)
 
-        if len(results) != 1:
-            #print("[len = {}] Error with {}".format(len(results),query))
-            continue
-
-        #authors = [r['authors'] for r in results]
-        authors_found = json.loads([r['authors'] for r in results][0])
-        orcid_found = [a['orcid'] for a in authors_found]
-        #print(orcid_found, "\n", should_be, "\n\n")
+        if len(results) > 0:
+            #authors = [r['authors'] for r in results]
+            authors_found = json.loads([r['authors'] for r in results][0])
+            orcid_found = [a['orcid'] for a in authors_found]
+            #print(orcid_found, "\n", should_be, "\n\n")
+        else:
+            orcid_found = []
 
         for a in should_be:
             #print(a)
-            if a not in orcid_found:
+            if a.strip() not in orcid_found:
                 not_found +=1
                 print("doi: ", doi, "should be: ", should_be, " but found: ", orcid_found )
                 break
 
     accuracy = (len(df)-not_found)*100/len(df)
-
+    print(accuracy)
     end = time.time()
     print("Accuracy: {}".format(accuracy))
     print("Total time for DOI queries (ORCID): {:.3f}s".format((end-start)))

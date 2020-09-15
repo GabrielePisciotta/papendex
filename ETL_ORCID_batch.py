@@ -45,46 +45,6 @@ def is_valid_orcid(orcid):
         return None
     """
 
-class Worker():
-    def __init__(self):
-        self.list = multiprocessing.Manager().list()
-
-    def query_and_deduplicate(self, to_store_items):
-
-        doi, authors_to_store = to_store_items
-        local_solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=100)
-
-        # Get the authors list
-        query = local_solr.search(q='id:"{}"'.format(doi))
-
-        # Check if it's empty
-        if len(query) == 0:
-            authors = []
-        else:
-            authors = json.loads([q['authors'] for q in query][0])
-
-        # Close the socket
-        local_solr.get_session().close()
-
-        # Combine the stored authors with the discovered authors in the batch
-        authors += authors_to_store
-
-        # Deduplicate them
-        authors = [dict(t) for t in {tuple(d.items()) for d in authors}]
-
-        self.list.append({
-            "id": doi,
-            "authors": json.dumps(authors)
-        })
-
-
-
-def thread_parallel(func):
-    def parallel_func(*args, **kw):
-        p = Thread(target=func, args=args, kwargs=kw)
-        p.daemon = False
-        p.start()
-    return parallel_func
 
 def write_to_file(to_store):
     file_id = 0
@@ -97,11 +57,11 @@ def write_to_file(to_store):
         authors = [dict(t) for t in {tuple(d.items()) for d in authors_to_store}]
 
         to_write.append({
-            "id": "{}".format(json.dumps(doi)),
+            "id": doi,
             "authors": json.dumps(authors)
         })
 
-        if len(to_write) == 10_000:
+        if len(to_write) == 20_000:
             with open(os.path.join('docs', '{}.json'.format(file_id)), 'w') as f:
                 json.dump(to_write, f)
                 file_id += 1
@@ -125,6 +85,9 @@ def store_data():
             with open('docs/{}'.format(file), "r") as f:
                 to_add = json.load(f)
 
+                #for el in to_add:
+                #    el['id'] = el['id'].replace('\"',"")
+
                 # Add it
                 response = solr.add(to_add)
 
@@ -142,7 +105,26 @@ def store_data():
     except Exception as e:
         print(e)
 
+def thread_parallel(func):
+    def parallel_func(*args, **kw):
+        p = Thread(target=func, args=args, kwargs=kw)
+        p.daemon = True
+        p.start()
+    return parallel_func
 
+@thread_parallel
+def save_orcid_to_file(to_save_orcid):
+    for e in to_save_orcid:
+        orcid = e['orcid']
+        with open('orcid/{}.txt'.format(orcid), 'w') as author_file:
+            json.dump(e, author_file)
+
+@thread_parallel
+def save_exception_file(root, orcid):
+    if orcid != None:
+        if 'doi' in etree.tounicode(root, pretty_print=True):
+            with open('exceptions/{}.xml'.format(orcid), 'w') as f:
+                f.write(etree.tounicode(root, pretty_print=True))
 
 def orcid_ETL():
 
@@ -154,18 +136,21 @@ def orcid_ETL():
     orcid_dump_compressed = zipfile.ZipFile('/mie/orcid/orcid.zip')
     activities_dir = [x for x in orcid_dump_compressed.namelist() if 'summaries' in x]
 
+    #activities_dir = ['a']
     start = time.time()
     to_store = {}
-
+    to_save_orcid = []
     for a in activities_dir:
         print("Extracting {}".format(a))
 
         orcid_dump_compressed.extract(a)
         with tarfile.open(a, 'r:gz') as extracted_archive:
+        #if 1==1:
             dir_in_extracted_archive = extracted_archive.getmembers()
+            #if 1==1:
             for f in tqdm(dir_in_extracted_archive):
+                #f = open('toprocess.xml', 'r')
                 f = extracted_archive.extractfile(f)
-
                 # When extracting the dump, it may happen that is read something that isn't a file
                 if f is None:
                     continue
@@ -186,55 +171,73 @@ def orcid_ETL():
 
                     name = root.find('{http://www.orcid.org/ns/person}person') \
                         .find('{http://www.orcid.org/ns/person}name')
+                    if name is not None:
+                        given_names = name.find('{http://www.orcid.org/ns/personal-details}given-names')
+                        if given_names is not None:
+                            given_names = given_names.text
+                        else:
+                            given_names = ""
+                        family_name = name.find('{http://www.orcid.org/ns/personal-details}family-name')
+                        if family_name is not None:
+                            family_name = family_name.text
+                        else:
+                            family_name = ""
+                    else:
+                        given_names = ""
+                        family_name = ""
 
-                    given_names = name.find('{http://www.orcid.org/ns/personal-details}given-names').text
-                    family_name = name.find('{http://www.orcid.org/ns/personal-details}family-name').text
-
-                    groups = root.find('{http://www.orcid.org/ns/activities}activities-summary') \
-                        .find('{http://www.orcid.org/ns/activities}works') \
-                        .findall('{http://www.orcid.org/ns/activities}group')
+                    works = root.find('{http://www.orcid.org/ns/activities}activities-summary') \
+                        .findall('{http://www.orcid.org/ns/activities}works')
 
                     dois = []
 
-                    # It's possible that are listed multiple works for each author.
-                    # This part is to extract each DOI, check if is valid and in the end
-                    # save it as normalised DOI.
-                    for g in groups:
-                        if g is not None:
-                            try:
-                                a1 = g.find('{http://www.orcid.org/ns/common}external-ids')
-                                if a1 is not None:
-                                    b1 = a1.find('{http://www.orcid.org/ns/common}external-id')
-                                    if b1 is not None:
-                                        type = b1.find('{http://www.orcid.org/ns/common}external-id-type')
+                    for w in works:
+                        groups = w.findall('{http://www.orcid.org/ns/activities}group')
 
-                                        if type is not None and type.text == 'doi':
-                                            c1 = b1.find('{http://www.orcid.org/ns/common}external-id-normalized')
-                                            if c1 is not None:
-                                                normalised_doi = is_valid_doi(c1.text)
-                                                if normalised_doi is not None:
-                                                    dois.append(normalised_doi)
-                                                else:
-                                                    print("Found non-normalised DOI: {}".format(normalised_doi))
+                        # It's possible that are listed multiple works for each author.
+                        # This part is to extract each DOI, check if is valid and in the end
+                        # save it as normalised DOI.
+                        for g in groups:
+                            if g is not None:
+                                try:
+                                    a1 = g.findall('{http://www.orcid.org/ns/common}external-ids')
+                                    for aa1 in a1:
+                                        if aa1 is not None:
+                                            b1 = aa1.findall('{http://www.orcid.org/ns/common}external-id')
+                                            for bb1 in b1:
+                                                if bb1 is not None:
+                                                    t1 = bb1.findall('{http://www.orcid.org/ns/common}external-id-type')
+                                                    for type in t1:
+                                                        if type is not None and type.text == 'doi':
+                                                            c1 = bb1.find('{http://www.orcid.org/ns/common}external-id-normalized')
+                                                            if c1 is not None:
+                                                                normalised_doi = is_valid_doi(c1.text)
+                                                                if normalised_doi is not None:
+                                                                    dois.append(normalised_doi)
 
-                            except AttributeError as ex:
-                                print(ex.with_traceback())
-                                continue
+                                except AttributeError as ex:
+                                    print(ex.with_traceback())
+                                    continue
+
+                    if len(dois) == 0:
+                        continue
+                        #with open('orcid_without_doi/{}.txt'.format(orcid), 'w') as author_file:
+                        #    author_file.write("")
+                    else:
+                        to_save_orcid.append({"orcid": orcid,
+                   "given_names": given_names,
+                   "family_name": family_name,
+                   "dois": dois})
 
                     for doi in dois:
 
                         # If the doi is already present in the local batch
                         if to_store.__contains__(doi):
-                            actual_values = to_store[doi]
-
-                            # if the author does not exist
-                            if len(list(filter(lambda x: x["orcid"] == orcid, actual_values))) == 0:
-                                actual_values.append({
+                            to_store[doi].append({
                                 'orcid': orcid,
                                 'given_names': given_names,
                                 'family_name': family_name
                             })
-                            to_store[doi] = actual_values
 
                         else:
                             to_store[doi] = [{
@@ -243,8 +246,12 @@ def orcid_ETL():
                                 'family_name': family_name
                             }]
 
+                    #if len(to_store) > 100:
+                    #    save_orcid_to_file(to_save_orcid)
+                    #    to_save_orcid.clear()
+
                 except Exception as ex:
-                    tree.write('out.xml', pretty_print = True)
+                    save_exception_file(root, orcid)
                     continue
 
 
@@ -259,32 +266,5 @@ def orcid_ETL():
     end = time.time()
     print("Processed in {:.3f}s".format((end-start)))
 
-def load_error_commit():
-    solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=1000)
-
-    with open('error_commit.txt', 'r') as f:
-        lines = f.read().split('}],')
-        for line in lines:
-            line += "}]}"
-            line = line.replace("'", '"')
-            print(line)
-            obj = json.loads(line)
-            w = Worker()
-            try:
-                response = solr.add(w.query_and_deduplicate(obj))
-
-                # Get response
-                response = json.loads(response)
-
-                # If something goes wrong, then print to file
-                if response['responseHeader']['status'] != 0:
-                    raise Exception
-
-            except:
-                # If something goes wrong, then print to file
-                with open('error_commit.txt', 'a') as f:
-                    f.write("%s\n" % obj)
-
 if __name__ == '__main__':
     orcid_ETL()
-    #load_error_commit()
