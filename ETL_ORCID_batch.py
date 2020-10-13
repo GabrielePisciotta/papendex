@@ -21,30 +21,6 @@ def get_files_in_dir(path):
     list_of_files.sort(key=lambda f: int(re.sub('\D', '', f)))
     return list_of_files
 
-def is_valid_doi(id_string):
-    return id_string
-    """
-    try:
-        doi = sub("\0+", "", sub("\s+", "", unquote(id_string[id_string.index("10."):])))
-        doi = doi.lower().strip()
-    except:
-        return None
-
-    if doi is None or match("^10\\..+/.+$", doi) is None:
-        return None
-    else:
-        return doi
-    """
-
-def is_valid_orcid(orcid):
-    return True
-    """
-    if orcid is not None and match("^([0-9]{4}-){3}[0-9]{3}[0-9X]$", orcid):
-        return True
-    else:
-        return None
-    """
-
 
 def write_to_file(to_store):
     file_id = 0
@@ -165,7 +141,7 @@ def orcid_ETL():
                         .find('{http://www.orcid.org/ns/common}path') \
                         .text
 
-                    if orcid is None: #or is_valid_orcid(orcid) is None:
+                    if orcid is None:
                         continue
 
 
@@ -211,10 +187,15 @@ def orcid_ETL():
                                                         if type is not None and type.text == 'doi':
                                                             c1 = bb1.find('{http://www.orcid.org/ns/common}external-id-normalized')
                                                             if c1 is not None:
-                                                                normalised_doi = is_valid_doi(c1.text)
+                                                                normalised_doi = c1.text
                                                                 if normalised_doi is not None:
                                                                     dois.append(normalised_doi)
-
+                                                            else:
+                                                                c1 = bb1.find('{http://www.orcid.org/ns/common}external-id-value')
+                                                                if c1 is not None:
+                                                                    normalised_doi = c1.text
+                                                                    if normalised_doi is not None:
+                                                                        dois.append(normalised_doi)
                                 except AttributeError as ex:
                                     print(ex.with_traceback())
                                     continue
@@ -225,9 +206,9 @@ def orcid_ETL():
                         #    author_file.write("")
                     else:
                         to_save_orcid.append({"orcid": orcid,
-                   "given_names": given_names,
-                   "family_name": family_name,
-                   "dois": dois})
+                                               "given_names": given_names,
+                                               "family_name": family_name,
+                                               "dois": dois})
 
                     for doi in dois:
 

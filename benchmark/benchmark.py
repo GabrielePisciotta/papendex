@@ -165,8 +165,8 @@ def dict_get(d, key_list): # Took from CCC
 def create_dataset_orcid():
     headers = {"User-Agent": "SPACIN / CrossrefProcessor (via OpenCitations - http://opencitations.net; "
                                          "mailto:contact@opencitations.net)"}
-    filename = 'benchmark/benchmark_queries_from_ccc.csv'
-    df = pd.read_csv(filename)
+    filename = 'benchmark/benchmark_dois_orcid_accuracy.csv'
+    df = pd.read_csv(filename, sep=';')
     __api_url = "https://pub.orcid.org/v2.1/search?q="
     sec_to_wait = 10,
     max_iteration = 6,
@@ -176,23 +176,23 @@ def create_dataset_orcid():
 
     for _, row in tqdm(df.iterrows(), total=df.shape[0]):
         doi_string = row['known_doi']
-
-        cur_query = "doi-self:\"%s\"" % doi_string
+        cur_query = "doi-self:\"%s\"" % doi_string.lower()
+        """
         doi_string_l = doi_string.lower()
         doi_string_u = doi_string.upper()
         if doi_string_l != doi_string or doi_string_u != doi_string:
             cur_query = "(" + cur_query
             if doi_string_l != doi_string:
-                cur_query += " OR doi-self:" + doi_string_l
+                cur_query += " OR doi-self:\"%s\"" % doi_string_l
             if doi_string_u != doi_string:
-                cur_query += " OR doi-self:" + doi_string_u
+                cur_query += " OR doi-self:\"%s\"" % doi_string_u
             cur_query += ")"
-
-        response = requests.get("https://pub.orcid.org/v2.1/search?q=" + quote(cur_query), headers={"Accept": "application/json"}, timeout=100)
+        """
+        response = requests.get("https://pub.orcid.org/v3.0/search?q=" + quote(cur_query), headers={"Accept": "application/json"}, timeout=100)
         if response.status_code != 200:
             retry = 0
             while response.status_code != 200 and retry < 3:
-                response = requests.get("https://pub.orcid.org/v2.1/search?q=" + quote(cur_query), timeout=100)
+                response = requests.get("https://pub.orcid.org/v3.0/search?q=" + quote(cur_query), timeout=100)
                 retry += 1
             if retry == 3:
                 print("Cant find {}".format(doi_string))
@@ -217,8 +217,8 @@ def run_benchmark_orcid_query_doi(filename='benchmark/benchmark_dois_orcid_accur
     not_found = 0
     start = time.time()
     for _, row in tqdm(df.iterrows(), total=df.shape[0]):
-        doi = row['doi']
-        should_be = row['results_from_orcid']
+        doi = row[0]
+        should_be = row[2]
         should_be = should_be.replace("[", "").replace("]", "").replace(" ", "")
         should_be = should_be.split(",")
         if should_be[0] == "":
@@ -272,11 +272,10 @@ def orcid_query_doi(filename='benchmark/benchmark_dois_orcid.csv', s=","):
         response = requests.get("https://pub.orcid.org/v2.1/search?q=" + quote(cur_query), timeout=100)
         if response.status_code != 200:
             retry = 0
-            while response.status_code != 200 and retry < 3:
+            while response.status_code != 200:
                 response = requests.get("https://pub.orcid.org/v2.1/search?q=" + quote(cur_query), timeout=100)
                 retry += 1
-            if retry == 3:
-                print("Cant find {}".format(doi_string))
+
         else:
             continue
 
