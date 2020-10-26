@@ -1,38 +1,24 @@
-# Exploit a producer-consumer architecture in order to
-# parallel process all the files and then upload them
 from os import listdir, system, remove
 from os.path import isfile, join
 import re
-import gzip
 import multiprocessing
 from urllib.parse import unquote
-import xmltodict, json
+import json
 from lxml import etree
 import pandas as pd
 import tqdm
 import time
-import gc
 from contextlib import closing
 import httplib2
 from bs4 import BeautifulSoup, SoupStrainer
 import wget
-import threading
-import uuid
-from concurrent.futures import ThreadPoolExecutor
 from multiprocessing.pool import ThreadPool
-import numpy as np
 import os
 
 __author__ = "Gabriele Pisciotta"
 pubmed_file_path = '/mie/europepmc.org/ftp/oa'
 articles_path = join(pubmed_file_path, 'articles')
 csv_file_path = join(pubmed_file_path, 'csv')
-
-def run_in_thread(fn):
-    def run(*k, **kw):
-        t = threading.Thread(target=fn, args=k, kwargs=kw)
-        t.start()
-    return run
 
 
 def concatenate_datasets(path):
@@ -160,7 +146,6 @@ def get_id_from_xml_source(cur_xml, id_type):
             del id_string
             return toret
 
-#@run_in_thread
 def worker_article(args):
     f, articleids = args
     # Use the extracted file
@@ -329,8 +314,6 @@ def worker_unzip_files(f):
     remove(join(pubmed_file_path, f))
 
 
-
-#@run_in_thread
 def handle_references(args):
     paper, df = args
     references = json.loads(paper['references'])
@@ -339,9 +322,9 @@ def handle_references(args):
         for reference in references:
             try:
                 obj = {}
-                # TODO: uncomment these
-                # if reference['entry_text'] is not None and reference['entry_text'] != "":
-                #    obj['entry_text'] = reference['entry_text']
+
+                if reference['entry_text'] is not None and reference['entry_text'] != "":
+                    obj['entry_text'] = reference['entry_text']
 
                 if reference["ref_pmid"] is not None:
                     ref_pmid = reference["ref_pmid"]
@@ -432,7 +415,6 @@ def join_dataset():
 
 def ETL_pubmed():
 
-    """
     # for each file from the pubmed dump
     f = get_files_in_dir(pubmed_file_path)
 
@@ -448,14 +430,14 @@ def ETL_pubmed():
     # Update the file list
     f = get_files_in_dir(pubmed_file_path)
     s = time.time()
-    """
+
 
     # Download articles' IDs --
     # TODO: check if not already present
-    #wget.download(f'ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/PMC-ids.csv.gz', pubmed_file_path)
+    wget.download(f'ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/PMC-ids.csv.gz', pubmed_file_path)
     articleids = pd.read_csv(join(pubmed_file_path,'PMC-ids.csv.gz'), usecols=['PMCID','PMID','DOI'])
 
-    """
+
     # Unzip all the files
     print("Unzipping all the articles")
     s = time.time()
@@ -464,25 +446,15 @@ def ETL_pubmed():
 
     e = time.time()
     print(f"Time: {(e-s)}")
-    """
+
     # process each article
 
     s = time.time()
     print("Processing all the articles")
     f = get_files_in_dir(articles_path)
 
-    """
-    no
-    with multiprocessing.Pool(8) as pool:
-        list(tqdm.tqdm(pool.imap(worker_article, (f,articleids)), total=1247090)) #~1h:45m
-    tasks = [ worker_article((fi, articleids)) for fi in f]
-    [t.join() for t in tasks]
-    """
-
-
-    #with ThreadPool(processes=100) as pool:
-    #with multiprocessing.Pool(4) as pool:
-    #    pool.map(worker_article, ((fi, articleids) for fi in f))
+    with ThreadPool(processes=100) as pool:
+        pool.map(worker_article, ((fi, articleids) for fi in f))
 
     e = time.time()
     print(f"Time: {(e-s)}")
