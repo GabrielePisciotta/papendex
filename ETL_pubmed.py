@@ -16,13 +16,9 @@ from multiprocessing.pool import ThreadPool
 import os
 
 __author__ = "Gabriele Pisciotta"
-pubmed_file_path = '/mie/europepmc.org/ftp/oa'
-articles_path = join(pubmed_file_path, 'articles')
-csv_file_path = join(pubmed_file_path, 'csv')
 
 
 def concatenate_datasets(path):
-
     present_files = list(get_files_in_dir(path))
     header_saved = False
 
@@ -52,11 +48,13 @@ def get_links_from_pubmed():
                 links.append(link['href'])
     return links
 
+
 def worker_download_links(todownload):
     wget.download(f'http://europepmc.org/ftp/oa/{todownload}', pubmed_file_path)
 
 
-def normalise_doi(doi_string, include_prefix=False): # taken from https://github.com/opencitations/index/blob/master/identifier/doimanager.py
+def normalise_doi(doi_string,
+                  include_prefix=False):  # taken from https://github.com/opencitations/index/blob/master/identifier/doimanager.py
     if doi_string is not None:
         try:
             doi_string = re.sub("\0+", "", re.sub("\s+", "", unquote(doi_string[doi_string.index("10."):])))
@@ -66,14 +64,15 @@ def normalise_doi(doi_string, include_prefix=False): # taken from https://github
     else:
         return None
 
+
 # Get list of file inside the dir
 def get_files_in_dir(path):
-    list_of_files = (f for f in listdir(path) if isfile(join(path, f)))
-    #list_of_files.sort(key=lambda f: int(re.sub('\D', '', f)))
+    list_of_files = [f for f in listdir(path) if isfile(join(path, f))]
+    # list_of_files.sort(key=lambda f: int(re.sub('\D', '', f)))
     return list_of_files
 
 
-def create_entry_xml(xml_ref): # Taken from CCC
+def create_entry_xml(xml_ref):  # Taken from CCC
     entry_string = ""
     cur_el = None
     el = None
@@ -130,6 +129,7 @@ def create_entry_xml(xml_ref): # Taken from CCC
     else:
         return None
 
+
 def get_id_from_xml_source(cur_xml, id_type):
     """This method extract an id_type from the XML"""
 
@@ -142,9 +142,10 @@ def get_id_from_xml_source(cur_xml, id_type):
         id_string = u"" + etree.tostring(id_string[0], method="text", encoding='unicode').strip()
         if id_string != "":
             del cur_xml
-            toret=str(id_string)
+            toret = str(id_string)
             del id_string
             return toret
+
 
 def worker_article(args):
     f, articleids = args
@@ -156,49 +157,45 @@ def worker_article(args):
         cur_pmcid = get_id_from_xml_source(cur_xml, 'pmcid')
         cur_doi = normalise_doi(get_id_from_xml_source(cur_xml, 'doi'))
 
-
         # Extract missing metadata from the ID dataset
         if cur_pmid is None or cur_pmcid is None or cur_doi is None:
             row = None
             if cur_pmid is not None:
                 row = articleids.query(f"PMID=='{cur_pmid}'")
-                #print("Info found by articlesid")
-            elif row is None and cur_pmcid is not None:
-                row = articleids.query(f"PMCID=='PMC{cur_pmcid}'")
-                #print("Info found by articlesid")
-
-            elif row is None and cur_doi is not None:
+            elif cur_pmcid is not None:
+                row = articleids.query(f"PMCID=='{cur_pmcid}'")
+            elif cur_doi is not None:
                 row = articleids.query(f"DOI=='{cur_doi}'")
-                #print("Info found by articlesid")
 
             if row is not None and len(row):
-                if cur_pmid is None and row['PMID'].values[0] is not None and row['PMID'].values[0] != "" and not row['PMID'].isnull().any():
+                if cur_pmid is None and row['PMID'].values[0] is not None and row['PMID'].values[0] != "" and not row[
+                    'PMID'].isnull().any():
                     cur_pmid = str(int(row['PMID'].values[0]))
-                    #print(f"Value found by articlesid: {cur_pmid}")
 
-                if cur_pmcid is None and row['PMCID'].values[0] is not None and row['PMCID'].values[0] != ""  and not row['PMCID'].isnull().any():
-                    cur_pmcid = str(row['PMCID'].values[0]).replace("PMC","").replace(".0", "")
-                    #print(f"Value found by articlesid: {cur_pmcid}")
+                if cur_pmcid is None and row['PMCID'].values[0] is not None and row['PMCID'].values[0] != "" and not \
+                row['PMCID'].isnull().any():
+                    cur_pmcid = str(row['PMCID'].values[0]).replace(".0", "")
 
-                if cur_doi is None and row['DOI'].values[0] is not None and row['DOI'].values[0] != ""  and not row['DOI'].isnull().any():
+                if cur_doi is None and row['DOI'].values[0] is not None and row['DOI'].values[0] != "" and not row[
+                    'DOI'].isnull().any():
                     cur_doi = normalise_doi(str(row['DOI'].values[0]))
-                    #print(f"Value found by articlesid: {cur_doi}")
-
-
-        if cur_pmcid is not None:
-            cur_pmcid = cur_pmcid.replace("PMC","")
 
         references = cur_xml.xpath(".//ref-list/ref")
         references_list = []
 
         if len(references):
             for reference in references:
-                entry_text = "" # temporary disabled for memory issues -> create_entry_xml(reference)
+                entry_text = create_entry_xml(reference)
                 ref_pmid = None
                 ref_doi = None
                 ref_pmcid = None
                 ref_url = None
-                ref_xmlid = None
+
+                ref_xmlid_attr = reference.get('id')
+                if len(ref_xmlid_attr):
+                    ref_xmlid = ref_xmlid_attr
+                    if ref_xmlid == "":
+                        ref_xmlid = None
 
                 ref_pmid_el = reference.xpath(".//pub-id[@pub-id-type='pmid']")
                 if len(ref_pmid_el):
@@ -218,8 +215,8 @@ def worker_article(args):
                         ref_pmcid_el[0], method="text", encoding='unicode').strip()
                     if ref_pmcid == "":
                         ref_pmcid = None
-                    elif ref_pmcid.startswith("PMC"):
-                        ref_pmcid = ref_pmcid.replace("PMC", "")
+                    elif not ref_pmcid.startswith("PMC"):
+                        ref_pmcid = f"PMC{ref_pmcid}"
 
                 ref_url_el = reference.xpath(".//ext-link")
                 if len(ref_url_el):
@@ -228,70 +225,55 @@ def worker_article(args):
                     if not ref_url.startswith("http"):
                         ref_url = None
 
-                if ref_xmlid is None:
-                    ref_xmlid_attr = reference.get('id')
-                    if len(ref_xmlid_attr):
-                        ref_xmlid = ref_xmlid_attr
-                        if ref_xmlid == "":
-                            ref_xmlid = None
-
                 # Extract missing metadata from the ID dataset
                 if ref_pmid is None or ref_pmcid is None or ref_doi is None:
                     row = None
 
                     if ref_pmid is not None:
                         row = articleids.query(f"PMID=='{ref_pmid}'")
-                        #row = articleids[articleids['PMID'] == float(ref_pmid)]
-                        #print("Info found by articlesid")
-
-                    elif row is None and ref_pmcid is not None:
-                        row = articleids.query(f"PMCID=='PMC{ref_pmcid}'")
-                        #row = articleids[articleids['PMCID'] == f"PMC{ref_pmcid}"]
-                        #print("Info found by articlesid")
-
-                    elif row is None and ref_doi is not None:
+                    elif ref_pmcid is not None:
+                        row = articleids.query(f"PMCID=='{ref_pmcid}'")
+                    elif ref_doi is not None:
                         row = articleids.query(f"DOI=='{ref_doi}'")
-                        #row = articleids[articleids['DOI'] == ref_doi]
-                        #print("Info found by articlesid")
 
                     if row is not None and len(row):
-                        if ref_pmid is None and row['PMID'].values[0] is not None and row['PMID'].values[0] != "" and not row['PMID'].isnull().any():
+                        if ref_pmid is None and row['PMID'].values[0] is not None and row['PMID'].values[
+                            0] != "" and not row['PMID'].isnull().any():
                             ref_pmid = str(int(row['PMID'].values[0]))
-                            #print(f"Value found by articlesid: {ref_pmid}")
 
-                        if ref_pmcid is None and row['PMCID'].values[0] is not None and row['PMCID'].values[0] != "" and not row['PMCID'].isnull().any():
-                            ref_pmcid = str(row['PMCID'].values[0]).replace("PMC","").replace(".0", "")
-                            #print(f"Value found by articlesid: {ref_pmcid}")
+                        if ref_pmcid is None and row['PMCID'].values[0] is not None and row['PMCID'].values[
+                            0] != "" and not row['PMCID'].isnull().any():
+                            ref_pmcid = str(row['PMCID'].values[0]).replace(".0", "")
 
-                        if ref_doi is None and row['DOI'].values[0] is not None and row['DOI'].values[0] != "" and not row['DOI'].isnull().any():
+                        if ref_doi is None and row['DOI'].values[0] is not None and row['DOI'].values[0] != "" and not \
+                        row['DOI'].isnull().any():
                             ref_doi = normalise_doi(str(row['DOI'].values[0]))
-                            #print(f"Value found by articlesid: {ref_doi}")
-
-
 
                 # Create an object to store the reference
-                references_list.append({
-                    #"entry_text": entry_text,
-                    "ref_pmid": ref_pmid,
-                    "ref_doi": ref_doi,
-                    "ref_pmcid": ref_pmcid,
-                    "ref_url": ref_url,
-                    "ref_xmlid": ref_xmlid,
-                })
+                obj = {}
+                obj['entry_text'] = entry_text
+                if ref_pmid is not None:
+                    obj['ref_pmid'] = ref_pmid
+                if ref_pmcid is not None:
+                    obj['ref_pmcid'] = ref_pmid
+                if ref_doi is not None:
+                    obj['ref_doi'] = ref_doi
+                if ref_url is not None:
+                    obj['ref_url'] = ref_url
+                if ref_xmlid is not None:
+                    obj['ref_xmlid'] = ref_xmlid
+                references_list.append(obj)
 
         df = pd.DataFrame({'cur_doi': [cur_doi],
-                      'cur_pmid': [cur_pmid],
-                      'cur_pmcid': [cur_pmcid],
-                      'cur_name': [f],
-                      'references': json.dumps(references_list)
-                       })
-
-        df.to_csv(join(csv_file_path, f"{f}.csv"),sep='\t', index=False)
-
+                           'cur_pmid': [cur_pmid],
+                           'cur_pmcid': [cur_pmcid],
+                           'cur_name': [f],
+                           'references': json.dumps(references_list)
+                           })
+        df.to_csv(join(csv_file_path, f"{f}.csv"), sep='\t', index=False)
 
 
 def worker_unzip_files(f):
-
     # Unzip
     system(f"gunzip {join(pubmed_file_path, f)}")
 
@@ -299,18 +281,19 @@ def worker_unzip_files(f):
     f = f.replace(".gz", "")
 
     # Create one file for each article, having its named
-    parser = etree.XMLParser(remove_blank_text=True)
-    tree = etree.parse(join(pubmed_file_path, f), parser)
+    tree = etree.parse(join(pubmed_file_path, f), etree.XMLParser(remove_blank_text=True))
 
     # Extract all the article nodes
     articles = tree.findall('article')
 
+    # Extract some useful identifier in order to give a unique name to the file
     for cur_xml in articles:
         cur_pmid = get_id_from_xml_source(cur_xml, 'pmid')
-        cur_pmcid = get_id_from_xml_source(cur_xml, 'pmcid').replace("PMC","")
-        with open(join(articles_path,f"art_PMID{cur_pmid}_PMCID{cur_pmcid}.xml"), 'w') as writefile:
-            writefile.write( etree.tostring(cur_xml, pretty_print=True, encoding='unicode') )
+        cur_pmcid = get_id_from_xml_source(cur_xml, 'pmcid')
+        with open(join(articles_path, f"art_PMID{cur_pmid}_{cur_pmcid}.xml"), 'w') as writefile:
+            writefile.write(etree.tostring(cur_xml, pretty_print=True, encoding='unicode'))
 
+    # Remove the downloaded dump
     remove(join(pubmed_file_path, f))
 
 
@@ -329,25 +312,20 @@ def handle_references(args):
                 if reference["ref_pmid"] is not None:
                     ref_pmid = reference["ref_pmid"]
                     obj['ref_pmid'] = ref_pmid
-
                 else:
                     ref_pmid = ""
 
                 if reference["ref_pmcid"] is not None:
                     ref_pmcid = reference["ref_pmcid"]
                     obj['ref_pmcid'] = ref_pmcid
-
                 else:
                     ref_pmcid = ""
 
                 if reference["ref_doi"] is not None:
                     ref_doi = reference["ref_doi"]
                     obj['ref_doi'] = ref_doi
-
                 else:
                     ref_doi = ""
-
-
 
                 # Make a kind of "join" between the reference and the dataset
                 # if there are missing IDs
@@ -362,14 +340,14 @@ def handle_references(args):
 
                     # Refill missing values from the joined entity
                     if ref_paper_joined is not None:
-                        print("Ho fatto il join")
                         if ref_pmid == "" and len(ref_paper_joined['cur_pmid']) and ref_paper_joined["cur_pmid"].values[
                             0] is not None and int(ref_paper_joined["cur_pmid"].values[0]) != 0:
                             ref_pmid = int(ref_paper_joined["cur_pmid"].values[0])
                             obj['ref_pmid'] = ref_pmid
 
-                        if ref_pmcid == "" and len(ref_paper_joined['cur_pmcid']) and ref_paper_joined["cur_pmcid"].values[
-                            0] is not None and int(ref_paper_joined["cur_pmcid"].values[0]) != 0:
+                        if ref_pmcid == "" and len(ref_paper_joined['cur_pmcid']) and \
+                                ref_paper_joined["cur_pmcid"].values[
+                                    0] is not None and int(ref_paper_joined["cur_pmcid"].values[0]) != 0:
                             ref_pmcid = int(ref_paper_joined["cur_pmcid"].values[0])
                             obj['ref_pmcid'] = ref_pmcid
 
@@ -389,7 +367,6 @@ def handle_references(args):
                 newreferences.append(obj)
             except Exception as e:
                 print(f"Exception {e} with paper {paper['cur_name']}, reference {reference}")
-                pass
 
             paper['references'] = json.dumps(newreferences)
 
@@ -414,7 +391,6 @@ def join_dataset():
 
 
 def ETL_pubmed():
-
     # for each file from the pubmed dump
     f = get_files_in_dir(pubmed_file_path)
 
@@ -429,60 +405,57 @@ def ETL_pubmed():
 
     # Update the file list
     f = get_files_in_dir(pubmed_file_path)
-    s = time.time()
-
 
     # Download articles' IDs --
-    # TODO: check if not already present
-    wget.download(f'ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/PMC-ids.csv.gz', pubmed_file_path)
-    articleids = pd.read_csv(join(pubmed_file_path,'PMC-ids.csv.gz'), usecols=['PMCID','PMID','DOI'])
-
+    if not os.path.isfile(join(pubmed_file_path, 'PMC-ids.csv.gz')):
+        wget.download(f'ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/PMC-ids.csv.gz', pubmed_file_path)
+    articleids = pd.read_csv(join(pubmed_file_path, 'PMC-ids.csv.gz'), usecols=['PMCID', 'PMID', 'DOI'])
 
     # Unzip all the files
     print("Unzipping all the articles")
     s = time.time()
-    with multiprocessing.Pool(1) as pool: # ~2h:30m
+    with multiprocessing.Pool(1) as pool:  # ~2h:30m
         list(tqdm.tqdm(pool.imap(worker_unzip_files, f), total=len(f)))
-
     e = time.time()
-    print(f"Time: {(e-s)}")
+    print(f"Time: {(e - s)}")
 
     # process each article
-
     s = time.time()
     print("Processing all the articles")
     f = get_files_in_dir(articles_path)
-
     with ThreadPool(processes=100) as pool:
         pool.map(worker_article, ((fi, articleids) for fi in f))
-
     e = time.time()
-    print(f"Time: {(e-s)}")
-
-    # Delete for memory usage, we no longer need this
-    del articleids
+    print(f"Time: {(e - s)}")
 
     print("Concatenating dataset")
     s = time.time()
-    os.makedirs(join(csv_file_path),  exist_ok=True)
+    os.makedirs(join(csv_file_path), exist_ok=True)
     concatenate_datasets(csv_file_path)
     e = time.time()
-    print(f"Time: {(e-s)}")
+    print(f"Time: {(e - s)}")
 
-
+    """
+    Uncomment this to get (maybe) more info by joining the rows in the dataset
+    
     print("Joining informations between rows")
     s = time.time()
     join_dataset()
     e = time.time()
     print(f"Time: {(e-s)}")
-
+    
     print("Concatenating joined dataset")
     s = time.time()
     os.makedirs(join(csv_file_path, 'joined'),  exist_ok=True)
     concatenate_datasets(join(csv_file_path, 'joined'))
     e = time.time()
-
     print(f"Time: {(e - s)}")
+    """
 
 
-ETL_pubmed()
+if __name__ == '__main__':
+    pubmed_file_path = '/mie/europepmc.org/ftp/oa'
+    articles_path = join(pubmed_file_path, 'articles')
+    csv_file_path = join(pubmed_file_path, 'csv')
+
+    ETL_pubmed()
