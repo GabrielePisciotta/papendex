@@ -22,7 +22,7 @@ import pickle
 
 __author__ = "Gabriele Pisciotta"
 
-class self:
+class EuropePubMedCentralDataset:
     def __init__(self, start_path, writing_multiple_csv = True):
         self.pubmed_file_path = start_path
         self.pubmed_dump_file_path = join(self.pubmed_file_path, 'dump')
@@ -143,11 +143,9 @@ class self:
                 return
             cur_pmid = self.get_id_from_xml_source(cur_xml, 'pmid')
             cur_pmcid = self.get_id_from_xml_source(cur_xml, 'pmcid')
-            if cur_pmcid is not None:
-                if not cur_pmcid.startswith("PMC"):
+            if cur_pmcid is not None and not cur_pmcid.startswith("PMC"):
                     cur_pmcid = f"PMC{cur_pmcid}"
-            cur_doi = self.normalise_doi(
-                self.get_id_from_xml_source(cur_xml, 'doi'))
+            cur_doi = self.normalise_doi(self.get_id_from_xml_source(cur_xml, 'doi'))
 
             # If we have no identifier, stop the processing of the article
             if cur_pmid is None and cur_pmcid is None and cur_doi is None:
@@ -182,7 +180,7 @@ class self:
 
                 if len(references):
                     for reference in references:
-                        entry_text = None #self.create_entry_xml(reference)
+                        entry_text = self.create_entry_xml(reference)
                         ref_pmid = None
                         ref_doi = None
                         ref_pmcid = None
@@ -280,10 +278,8 @@ class self:
                 os.makedirs(join(self.articles_path, 'exceptions'), exist_ok=True)
                 with open(join(self.articles_path, f), 'w') as fout:
                     fout.write(fi.read())
-                os.remove(join(self.articles_path, f))  
-
+                os.remove(join(self.articles_path, f))
                 print(f"Exception {e} with file: {f}")
-
 
     def process_articles(self):
 
@@ -300,9 +296,6 @@ class self:
         if not self.writing_multiple_csv:
             self.queue.put("STOP")
             consumer.join()
-
-
-
 
     @staticmethod
     def normalise_doi(doi_string) -> Optional[str]:  # taken from https://github.com/opencitations/index/blob/master/identifier/doimanager.py
@@ -451,8 +444,7 @@ class self:
 def worker_download_links(args):
     todownload, pubmed_dump_file_path = args
     wget.download(f'http://europepmc.org/ftp/oa/{todownload}', pubmed_dump_file_path)
-    return 1
 
 if __name__ == '__main__':
-    e = self('/mie/europepmc.org/ftp/oa')
+    e = EuropePubMedCentralDataset('/mie/europepmc.org/ftp/oa')
     e.start()
