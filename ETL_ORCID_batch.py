@@ -21,7 +21,6 @@ def get_files_in_dir(path):
     list_of_files.sort(key=lambda f: int(re.sub('\D', '', f)))
     return list_of_files
 
-
 def write_to_file(to_store):
     file_id = 0
     print("Writing to file...")
@@ -50,8 +49,6 @@ def write_to_file(to_store):
             file_id += 1
             to_write.clear()
 
-
-#@thread_parallel
 def store_data():
     print("Storing data in SOLR...")
     try:
@@ -72,8 +69,9 @@ def store_data():
                 solr.get_session().close()
                 gc.collect()
 
-                # If something goes wrong, then print to file
+                # If something goes wrong, raise an exception
                 if response['responseHeader']['status'] != 0:
+                    print(f"Exception with file {f}")
                     raise Exception
                 to_add.clear()
 
@@ -106,13 +104,9 @@ def orcid_ETL():
 
     print("Extracting Orcid dump... This may take a while.")
 
-    #orcid_dump_compressed = zipfile.ZipFile("/home/gabriele/Universita/Ricerca/OpenCitations CCC/progetti/indexer/papendex/0.zip")
-    #activities_dir = [x for x in orcid_dump_compressed.namelist()]
-
     orcid_dump_compressed = zipfile.ZipFile('/mie/orcid/orcid.zip')
     activities_dir = [x for x in orcid_dump_compressed.namelist() if 'summaries' in x]
 
-    #activities_dir = ['a']
     start = time.time()
     to_store = {}
     to_save_orcid = []
@@ -121,13 +115,11 @@ def orcid_ETL():
 
         orcid_dump_compressed.extract(a)
         with tarfile.open(a, 'r:gz') as extracted_archive:
-        #if 1==1:
             dir_in_extracted_archive = extracted_archive.getmembers()
-            #if 1==1:
             for f in tqdm(dir_in_extracted_archive):
-                #f = open('toprocess.xml', 'r')
                 f = extracted_archive.extractfile(f)
-                # When extracting the dump, it may happen that is read something that isn't a file
+
+                # It may happen that is read something that isn't a file, so this is to skip
                 if f is None:
                     continue
 
@@ -143,7 +135,6 @@ def orcid_ETL():
 
                     if orcid is None:
                         continue
-
 
                     name = root.find('{http://www.orcid.org/ns/person}person') \
                         .find('{http://www.orcid.org/ns/person}name')
@@ -190,12 +181,12 @@ def orcid_ETL():
                                                                 normalised_doi = c1.text
                                                                 if normalised_doi is not None:
                                                                     dois.append(normalised_doi)
-                                                            else:
+                                                            """else:
                                                                 c1 = bb1.find('{http://www.orcid.org/ns/common}external-id-value')
                                                                 if c1 is not None:
                                                                     normalised_doi = c1.text
                                                                     if normalised_doi is not None:
-                                                                        dois.append(normalised_doi)
+                                                                        dois.append(normalised_doi)"""
                                 except AttributeError as ex:
                                     print(ex.with_traceback())
                                     continue
@@ -212,7 +203,7 @@ def orcid_ETL():
 
                     for doi in dois:
 
-                        # If the doi is already present in the local batch
+                        # If the doi is already present in the local batch, we append the orcid to its list
                         if to_store.__contains__(doi):
                             to_store[doi].append({
                                 'orcid': orcid,
@@ -227,9 +218,6 @@ def orcid_ETL():
                                 'family_name': family_name
                             }]
 
-                    #if len(to_store) > 100:
-                    #    save_orcid_to_file(to_save_orcid)
-                    #    to_save_orcid.clear()
 
                 except Exception as ex:
                     save_exception_file(root, orcid)

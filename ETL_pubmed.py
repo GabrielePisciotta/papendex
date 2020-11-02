@@ -23,12 +23,12 @@ import pickle
 __author__ = "Gabriele Pisciotta"
 
 class EuropePubMedCentralDataset:
-    def __init__(self, start_path, writing_multiple_csv = True):
+    def __init__(self, start_path="", writing_multiple_csv = True):
         self.pubmed_file_path = start_path
         self.pubmed_dump_file_path = join(self.pubmed_file_path, 'dump')
         self.articles_path = join(self.pubmed_file_path, 'articles')
         self.csv_file_path = join(self.pubmed_file_path, 'csv')
-        
+
         # We can both exploit a queue in order to write into a single dataset.csv
         # or to save multiple csv and then concatenate them into the final dataset
         self.writing_multiple_csv = writing_multiple_csv

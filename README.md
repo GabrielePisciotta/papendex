@@ -38,11 +38,21 @@ where:
 - `bibref` is the textual field that is indexed
 - `original` is the original JSON document in Crossref, that will be returned with a query
 
+
 At the end of the processing of each json file, the related objects are loaded in Solr.
 
+The ORCID dump is composed of many compressed tar.gz files. We're interested only in `ORCID_<year>_summaries.tar.gz`. 
+So, after having downloaded the complete dump from the website, the ETL for ORCID will automatically extract only that one.
+The schema that we're using for the ORCID is the following:
+```
+"id":"10.1590/0102-4698186748",
+"authors":"[{\"orcid\": \"0000-0003-1789-8243\", \"given_names\": \"Vinicius\", \"family_name\": \"Machado de Oliveira\"}]",
+``` 
+where `id` is a DOI and authors is a stored field containing a list of authors, each object composed of an `orcid`, a `given_name` and a `family_name`.
+
 ### Benchmark
-In order to assess the performances achieved using the local indexed Crossref data, use the 
-`benchmark.py` script.
+In order to assess the performances achieved using the local indexed Crossref/ORCID data, use the 
+`benchmark.py` script. For assess the Crossref performances it's better to use their tool.
 
 
 ---
