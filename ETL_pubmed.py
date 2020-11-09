@@ -264,7 +264,7 @@ class EuropePubMedCentralDataset:
                             'cur_name': [f],
                             'references': [json.dumps(references_list)]
                         })
-                        df.to_csv(join(self.csv_file_path, f"{f}.csv"), sep="\t")
+                        df.to_csv(join(self.csv_file_path, f"{f}.csv"), sep="\t", index=False)
                     else:
                         self.queue.put({
                             'cur_doi': cur_doi,
@@ -426,7 +426,7 @@ class EuropePubMedCentralDataset:
 
         df = pd.read_csv(join(path, 'dataset.csv'), sep='\t')
         df.drop_duplicates(inplace=True)
-        df.to_csv(join(path, 'dataset.csv'), sep='\t')
+        df.to_csv(join(path, 'dataset.csv'), sep='\t', index=False)
 
         return join(path, 'dataset.csv')
 
