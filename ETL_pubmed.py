@@ -40,7 +40,7 @@ class EuropePubMedCentralDataset:
         os.makedirs(self.csv_file_path, exist_ok=True)
         os.makedirs(self.pubmed_dump_file_path, exist_ok=True)
 
-    def start(self, skip_download = True):
+    def start(self, skip_download = False):
         if not skip_download:
             # for each file from the pubmed dump
             f = self._get_files_in_dir(self.pubmed_dump_file_path)
