@@ -54,7 +54,27 @@ where `id` is a DOI and authors is a stored field containing a list of authors, 
 In order to assess the performances achieved using the local indexed Crossref/ORCID data, use the 
 `benchmark.py` script. For assess the Crossref performances it's better to use their tool.
 
-
+### PubMed ETL 
+This tool let us create a dataset from the EuropePMC OpenAccess dumps.
+The workflow is divided in the following steps:
+- download the dumps (skippable)
+- download IDs file and generate a pickle dump of it to enable a fast search
+- unzip the articles from each dump and store their xml separately, deleting in the end the original dump (concurrently-> specify the number)
+- process the article. Each XML is transformed in a row of the dataset having the following fields:
+    - `cur_doi`
+    - `cur_pmid`
+    - `cur_pmcid`
+    - `cur_name` (the reference to the XML file needed for BEE/Jats2OC)
+    - `references` (json dumped string containing a list of identifiers of the cited documents)
+ 
+    If any of the previous IDs are not contained in the XML, we will exploit the PMID or PMCID to find the missing ones
+    in the IDs file. 
+    
+    If a citing article or a cited one doesn't have any ID, we don't save it. If a citing article doesn't have cited 
+    references, we don't save it.
+    
+    This process is run in parallel (-> specify the number). You can specify to store everything in a single dataset.csv (slow)
+    or to store in many CSV files and then concatenate them (fast).
 ---
 ### References
 [1] https://en.wikipedia.org/wiki/Extract,_transform,_load
