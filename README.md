@@ -48,13 +48,28 @@ The schema that we're using for the ORCID is the following:
 "id":"10.1590/0102-4698186748",
 "authors":"[{\"orcid\": \"0000-0003-1789-8243\", \"given_names\": \"Vinicius\", \"family_name\": \"Machado de Oliveira\"}]",
 ``` 
-where `id` is a DOI and authors is a stored field containing a list of authors, each object composed of an `orcid`, a `given_name` and a `family_name`.
+where:
+ - `id` is a DOI (unique key)
+ - `authors` is a stored field containing a list of authors, each object composed of an `orcid`, a `given_name` and a `family_name`.
 
-### Benchmark
-In order to assess the performances achieved using the local indexed Crossref/ORCID data, use the 
-`benchmark.py` script. For assess the Crossref performances it's better to use their tool.
+### How to start ETL Crossref
+First of all, be sure that Solr is up and running.
+Then, chose if you want to work with an already extracted dump file or directly with the dump. Change the default parameters in ETL_Crossref.py's main: 
+- `source`: can be 'path' if you want to specify the extracted path or 'compressed' if you want to specify the compressed filename
+- `path`: the path where we will work (e.g.: where the dump has been extracted or where the dump filename is contained)
+- `dump_filename`: the file name of the dump
+- `solr_address`: the address of the Solr server (if running in local, keep it as it is),
 
-### PubMed ETL 
+After having it configured, run it with `$ python3 ETL_Crossref.py` and have a break, it may be a long procedure.
+
+### How to start ETL Orcid
+As for the ETL Crossref, be sure that Solr is up and running.
+Then, change the default parameters in ETL_Orcid.py's main setting the reference to the «SUMMARIES» dump downloaded from Orcid.
+Then run it with `$ python3 ETL_Orcid.py` and have another big break. Better to run this overnight :)
+
+---
+
+### ETL PubMed 
 This tool let us create a dataset from the EuropePMC OpenAccess dumps.
 The workflow is divided in the following steps:
 - download the dumps (skippable)
@@ -75,6 +90,17 @@ The workflow is divided in the following steps:
     
     This process is run in parallel (-> specify the number). You can specify to store everything in a single dataset.csv (slow)
     or to store in many CSV files and then concatenate them (fast).
+    
+You'll find the result in `{path}/csv/dataset.csv`.
+
+### How to start ETL PubMed
+All the files needed to build the dataset will be automatically downloaded from the script. Just specify in ETL_pubmed.py's main:
+- `start_path`: the working directory
+- `writing_multiple_csv`: True/False, default True (fast)
+
+Then run in with `$ python3 ETL_pubmed.py`
+
+
 ---
 ### References
 [1] https://en.wikipedia.org/wiki/Extract,_transform,_load

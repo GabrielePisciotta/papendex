@@ -446,5 +446,5 @@ def worker_download_links(args):
     wget.download(f'http://europepmc.org/ftp/oa/{todownload}', pubmed_dump_file_path)
 
 if __name__ == '__main__':
-    e = EuropePubMedCentralDataset('/mie/europepmc.org/ftp/oa')
+    e = EuropePubMedCentralDataset(start_path='/mie/europepmc.org/ftp/oa', writing_multiple_csv=True)
     e.start()
