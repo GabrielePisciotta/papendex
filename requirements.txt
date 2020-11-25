@@ -1,0 +1,10 @@
+lxml
+requests
+httplib2
+tqdm
+wget
+pandas
+pysolr
+beautifulsoup4
+scikit_learn
+xmltodict
