@@ -9,8 +9,8 @@ import re
 import tarfile
 import os
 import gc
-import multiprocessing
 from threading import Thread
+import argparse
 
 # Get list of file inside the dir
 def get_files_in_dir(path):
@@ -55,9 +55,6 @@ def store_data():
             with open('docs/{}'.format(file), "r") as f:
                 to_add = json.load(f)
 
-                #for el in to_add:
-                #    el['id'] = el['id'].replace('\"',"")
-
                 # Add it
                 response = solr.add(to_add)
 
@@ -97,7 +94,7 @@ def save_exception_file(root, orcid):
             with open('exceptions/{}.xml'.format(orcid), 'w') as f:
                 f.write(etree.tounicode(root, pretty_print=True))
 
-def orcid_ETL(summaries_dump = '/mie/orcid/orcid.zip'):
+def orcid_ETL(summaries_dump):
 
     print("Extracting Orcid dump... This may take a while.")
 
@@ -183,32 +180,28 @@ def orcid_ETL(summaries_dump = '/mie/orcid/orcid.zip'):
                                 print(ex.with_traceback())
                                 continue
 
-                if len(dois) == 0:
-                    continue
-                    #with open('orcid_without_doi/{}.txt'.format(orcid), 'w') as author_file:
-                    #    author_file.write("")
-                else:
+                if len(dois) != 0:
                     to_save_orcid.append({"orcid": orcid,
                                            "given_names": given_names,
                                            "family_name": family_name,
                                            "dois": dois})
 
-                for doi in dois:
+                    for doi in dois:
 
-                    # If the doi is already present in the local batch, we append the orcid to its list
-                    if to_store.__contains__(doi):
-                        to_store[doi].append({
-                            'orcid': orcid,
-                            'given_names': given_names,
-                            'family_name': family_name
-                        })
+                        # If the doi is already present in the local batch, we append the orcid to its list
+                        if to_store.__contains__(doi):
+                            to_store[doi].append({
+                                'orcid': orcid,
+                                'given_names': given_names,
+                                'family_name': family_name
+                            })
 
-                    else:
-                        to_store[doi] = [{
-                            'orcid': orcid,
-                            'given_names': given_names,
-                            'family_name': family_name
-                        }]
+                        else:
+                            to_store[doi] = [{
+                                'orcid': orcid,
+                                'given_names': given_names,
+                                'family_name': family_name
+                            }]
 
 
             except Exception as ex:
@@ -226,4 +219,7 @@ def orcid_ETL(summaries_dump = '/mie/orcid/orcid.zip'):
     print("Processed in {:.3f}s".format((end-start)))
 
 if __name__ == '__main__':
-    orcid_ETL(summaries_dump = '/mie/orcid/orcid.zip')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("summaries_dump", help="Summaries dump")
+    args = parser.parse_args()
+    orcid_ETL(summaries_dump = args.summaries_dump)

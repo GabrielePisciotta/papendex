@@ -1,6 +1,7 @@
 # Papendex
 This project handles the indexing of Crossref and ORCID dumps.
-This is part of the [Open Biomedical Citations in Context Corpus](https://wellcome.ac.uk/grant-funding/people-and-projects/grants-awarded/open-biomedical-citations-context-corpus) research project.
+
+This is part of the [Open Biomedical Citations in Context Corpus](https://wellcome.ac.uk/grant-funding/people-and-projects/grants-awarded/open-biomedical-citations-context-corpus) research project, actually used for speed up OpenCitations SPAR Citation Indexer (SPACIN) process.
 
 ### Solr
 In order to speed up the search process we exploit [Solr](https://www.apache.org/dyn/closer.lua/lucene/solr/8.6.1/solr-8.6.1.tgz) as search platform. 
@@ -41,8 +42,8 @@ where:
 
 At the end of the processing of each json file, the related objects are loaded in Solr.
 
-The ORCID dump is composed of many compressed tar.gz files. We're interested only in `ORCID_<year>_summaries.tar.gz`. 
-So, after having downloaded the complete dump from the website, the ETL for ORCID will automatically extract only that one.
+The ORCID dump is composed of many compressed tar.gz files. We're interested only in `ORCID_<year>_summaries.tar.gz`: get it from its website, and specify the reference to the file when you run the process.
+
 The schema that we're using for the ORCID is the following:
 ```
 "id":"10.1590/0102-4698186748",
@@ -54,51 +55,20 @@ where:
 
 ### How to start ETL Crossref
 First of all, be sure that Solr is up and running.
-Then, chose if you want to work with an already extracted dump file or directly with the dump. Change the default parameters in ETL_Crossref.py's main: 
+Then, chose if you want to work with an already extracted dump file or directly with the compressed dump. You'll have to specify some parameters in ETL_Crossref.py: 
 - `source`: can be 'path' if you want to specify the extracted path or 'compressed' if you want to specify the compressed filename
 - `path`: the path where we will work (e.g.: where the dump has been extracted or where the dump filename is contained)
 - `dump_filename`: the file name of the dump
 - `solr_address`: the address of the Solr server (if running in local, keep it as it is),
 
-After having it configured, run it with `$ python3 ETL_Crossref.py` and have a break, it may be a long procedure.
+Run it with `$ python3 ETL_Crossref.py <parameters>` and have a break, it may be a long procedure.
 
 ### How to start ETL Orcid
 As for the ETL Crossref, be sure that Solr is up and running.
-Then, change the default parameters in ETL_Orcid.py's main setting the reference to the «SUMMARIES» dump downloaded from Orcid.
-Then run it with `$ python3 ETL_Orcid.py` and have another big break. Better to run this overnight :)
 
----
+You'll have to specify some parameters ETL_Orcid, setting the reference to the «SUMMARIES» dump downloaded from Orcid.
 
-### ETL PubMed 
-This tool let us create a dataset from the EuropePMC OpenAccess dumps.
-The workflow is divided in the following steps:
-- download the dumps (skippable)
-- download IDs file and generate a pickle dump of it to enable a fast search
-- unzip the articles from each dump and store their xml separately, deleting in the end the original dump (concurrently-> specify the number)
-- process the article. Each XML is transformed in a row of the dataset having the following fields:
-    - `cur_doi`
-    - `cur_pmid`
-    - `cur_pmcid`
-    - `cur_name` (the reference to the XML file needed for BEE/Jats2OC)
-    - `references` (json dumped string containing a list of identifiers of the cited documents)
- 
-    If any of the previous IDs are not contained in the XML, we will exploit the PMID or PMCID to find the missing ones
-    in the IDs file. 
-    
-    If a citing article or a cited one doesn't have any ID, we don't save it. If a citing article doesn't have cited 
-    references, we don't save it.
-    
-    This process is run in parallel (-> specify the number). You can specify to store everything in a single dataset.csv (slow)
-    or to store in many CSV files and then concatenate them (fast).
-    
-You'll find the result in `{path}/csv/dataset.csv`.
-
-### How to start ETL PubMed
-All the files needed to build the dataset will be automatically downloaded from the script. Just specify in ETL_pubmed.py's main:
-- `start_path`: the working directory
-- `writing_multiple_csv`: True/False, default True (fast)
-
-Then run in with `$ python3 ETL_pubmed.py`
+Run it with `$ python3 ETL_Orcid.py <parameters>` and have another big break. Better to run this overnight.
 
 
 ---

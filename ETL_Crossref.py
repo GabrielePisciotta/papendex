@@ -13,6 +13,7 @@ from os import listdir
 from os.path import isfile, join, basename, splitext
 import re
 import tarfile
+import argparse
 
 
 # Get list of file inside the dir
@@ -65,7 +66,7 @@ def extract_string_from_metadata(content):
 
     return text
 
-def crossref_ETL(source='path', path="/mie/", dump_filename="crossref-data-2020-06.tar.gz", solr_address='http://localhost:8983/solr/crossref'):
+def crossref_ETL(source, start_path, dump_filename, solr_address):
     start = time.time()
 
     try:
@@ -81,7 +82,7 @@ def crossref_ETL(source='path', path="/mie/", dump_filename="crossref-data-2020-
     doc_in_json_file = 0
 
     if source == 'path':
-        inpath = path
+        inpath = start_path
         file_list = get_files_in_dir(inpath)
     else:
         print("Extracting Crossref dump... This may take a while.")
@@ -128,4 +129,13 @@ def crossref_ETL(source='path', path="/mie/", dump_filename="crossref-data-2020-
 
 
 if __name__ == '__main__':
-    crossref_ETL(source='compressed', path="/mie/", dump_filename="crossref-data-2020-06.tar.gz", solr_address='http://localhost:8983/solr/crossref')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("start_path", default="", help="Working path")
+    parser.add_argument("source", choices=['path', 'compressed'], default="compressed",
+                        help="Kind of source. Can be 'path' or 'compressed'")
+    parser.add_argument("dump_filename")
+    parser.add_argument("solr_address", default="http://localhost:8983/solr/crossref")
+
+    args = parser.parse_args()
+
+    crossref_ETL(source=args.source, start_path=args.start_path, dump_filename=args.dump_filename, solr_address=args.solr_address)
