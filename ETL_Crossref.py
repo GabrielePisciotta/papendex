@@ -86,7 +86,7 @@ def crossref_ETL(source, start_path, dump_filename, solr_address):
         file_list = get_files_in_dir(inpath)
     else:
         print("Extracting Crossref dump... This may take a while.")
-        crossref_dump_compressed = tarfile.open(dump_filename)
+        crossref_dump_compressed = tarfile.open(dump_filename, 'r:gz')
         file_list = crossref_dump_compressed.getmembers()
 
     # For each file in the crossref compressed dump
@@ -99,7 +99,8 @@ def crossref_ETL(source, start_path, dump_filename, solr_address):
             # When extracting the dump, it may happen that is read something that isn't a file
             if f is None:
                 continue
-            content = json.loads(f.read())
+
+            content = json.loads(f.read().decode())
         else:
             # Read the file as a json object
             content = read_json_file(join(inpath, f))
@@ -112,8 +113,8 @@ def crossref_ETL(source, start_path, dump_filename, solr_address):
             # For each document, create the structure of the object that will be updated in Solr
             doc = {
                 "id": element['DOI'].lower(),
-                "bibref": extract_string_from_metadata(element).encode('utf-8'),
-                "original": json.dumps(element).encode('utf-8')
+                "bibref": extract_string_from_metadata(element),
+                "original": json.dumps(element)
             }
 
             elements.append(doc)

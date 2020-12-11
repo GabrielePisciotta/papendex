@@ -57,11 +57,16 @@ where:
 First of all, be sure that Solr is up and running.
 Then, chose if you want to work with an already extracted dump file or directly with the compressed dump. You'll have to specify some parameters in ETL_Crossref.py: 
 - `source`: can be 'path' if you want to specify the extracted path or 'compressed' if you want to specify the compressed filename
-- `path`: the path where we will work (e.g.: where the dump has been extracted or where the dump filename is contained)
-- `dump_filename`: the file name of the dump
+- `path`: the path of the already extracted json (if 'path' is chosen as source)
+- `dump_filename`: the absolute file reference of the dump
 - `solr_address`: the address of the Solr server (if running in local, keep it as it is),
 
-Run it with `$ python3 ETL_Crossref.py <parameters>` and have a break, it may be a long procedure.
+So if you want to run it on an folder where it can find all the extracted jsons:
+`python3.5 ETL_Crossref.py "/full/path/to/extracted" 'path' '' "http://localhost:8983/solr/crossref"`
+
+If you want to run it on an compressed dump:
+`python3.5 ETL_Crossref.py "" 'compressed' '/full/path/to/crossdump.tar.gz' "http://localhost:8983/solr/crossref"`
+
 
 ### How to start ETL Orcid
 As for the ETL Crossref, be sure that Solr is up and running.
