@@ -71,7 +71,8 @@ If you want to run it on an compressed dump:
 ### How to start ETL Orcid
 As for the ETL Crossref, be sure that Solr is up and running.
 
-You'll have to specify some parameters ETL_Orcid, setting the reference to the «SUMMARIES» dump downloaded from Orcid.
+You'll have to specify some parameters ETL_Orcid, setting the reference to the «SUMMARIES» dump downloaded from Orcid
+and the output path.
 
 Run it with `$ python3 ETL_Orcid.py <parameters>` and have another big break. Better to run this overnight.
 

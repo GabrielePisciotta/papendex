@@ -11,6 +11,8 @@ import os
 import gc
 from threading import Thread
 import argparse
+from pathlib import Path
+
 
 # Get list of file inside the dir
 def get_files_in_dir(path):
@@ -18,10 +20,11 @@ def get_files_in_dir(path):
     list_of_files.sort(key=lambda f: int(re.sub('\D', '', f)))
     return list_of_files
 
-def write_to_file(to_store):
+def write_to_file(to_store, output_path):
     file_id = 0
     print("Writing to file...")
     to_write = []
+    Path(os.path.join(output_path,'docs')).mkdir(parents=True, exist_ok=True)
 
     for doi, authors_to_store in tqdm(to_store.items()):
 
@@ -34,25 +37,25 @@ def write_to_file(to_store):
         })
 
         if len(to_write) == 20000:
-            with open(os.path.join('docs', '{}.json'.format(file_id)), 'w') as f:
+            with open(os.path.join(output_path, 'docs', '{}.json'.format(file_id)), 'w') as f:
                 json.dump(to_write, f)
                 file_id += 1
                 to_write.clear()
                 gc.collect()
 
     if len(to_write) > 0:
-        with open(os.path.join('docs', '{}.json'.format(file_id)), 'w') as f:
+        with open(os.path.join(output_path, 'docs', '{}.json'.format(file_id)), 'w') as f:
             json.dump(to_write, f)
             file_id += 1
             to_write.clear()
 
-def store_data():
+def store_data(output_path):
     print("Storing data in SOLR...")
     try:
         solr = pysolr.Solr('http://localhost:8983/solr/orcid', always_commit=True, timeout=100)
         import os
-        for file in tqdm(os.listdir("docs")):
-            with open('docs/{}'.format(file), "r") as f:
+        for file in tqdm(os.listdir(os.path.join(output_path, "docs"))):
+            with open(os.path.join(output_path,'docs/{}'.format(file)), "r") as f:
                 to_add = json.load(f)
 
                 # Add it
@@ -81,20 +84,20 @@ def thread_parallel(func):
     return parallel_func
 
 @thread_parallel
-def save_orcid_to_file(to_save_orcid):
+def save_orcid_to_file(to_save_orcid, output_path):
     for e in to_save_orcid:
         orcid = e['orcid']
-        with open('orcid/{}.txt'.format(orcid), 'w') as author_file:
+        with open(os.path.join(output_path, 'orcid/{}.txt'.format(orcid)), 'w') as author_file:
             json.dump(e, author_file)
 
 @thread_parallel
-def save_exception_file(root, orcid):
+def save_exception_file(root, orcid, output_path):
     if orcid != None:
         if 'doi' in etree.tounicode(root, pretty_print=True):
-            with open('exceptions/{}.xml'.format(orcid), 'w') as f:
+            with open(os.path.join(output_path,'exceptions/{}.xml'.format(orcid)), 'w') as f:
                 f.write(etree.tounicode(root, pretty_print=True))
 
-def orcid_ETL(summaries_dump):
+def orcid_ETL(summaries_dump, output_path):
 
     print("Extracting Orcid dump... This may take a while.")
 
@@ -205,21 +208,22 @@ def orcid_ETL(summaries_dump):
 
 
             except Exception as ex:
-                save_exception_file(root, orcid)
+                save_exception_file(root, orcid, output_path)
                 continue
 
 
         # Flush...
         if len(to_store) != 0:
-            write_to_file(to_store)
+            write_to_file(to_store, output_path)
             gc.collect()
-            store_data()
+            store_data(output_path)
 
     end = time.time()
     print("Processed in {:.3f}s".format((end-start)))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument("output_path", help="Path where will be stored everything")
     parser.add_argument("summaries_dump", help="Summaries dump")
     args = parser.parse_args()
-    orcid_ETL(summaries_dump = args.summaries_dump)
+    orcid_ETL(summaries_dump = args.summaries_dump, output_path=args.output_path)
