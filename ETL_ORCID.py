@@ -33,7 +33,7 @@ def write_to_file(to_store):
             "authors": json.dumps(authors)
         })
 
-        if len(to_write) == 20_000:
+        if len(to_write) == 20000:
             with open(os.path.join('docs', '{}.json'.format(file_id)), 'w') as f:
                 json.dump(to_write, f)
                 file_id += 1
