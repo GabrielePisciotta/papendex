@@ -65,7 +65,7 @@ def store_data():
 
                 # If something goes wrong, raise an exception
                 if response['responseHeader']['status'] != 0:
-                    print(f"Exception with file {f}")
+                    print("Exception with file {}".format(f))
                     raise Exception
                 to_add.clear()
 
