@@ -55,26 +55,26 @@ where:
 
 ### How to start ETL Crossref
 First of all, be sure that Solr is up and running.
-Then, chose if you want to work with an already extracted dump file or directly with the compressed dump. You'll have to specify some parameters in ETL_Crossref.py: 
-- `source`: can be 'path' if you want to specify the extracted path or 'compressed' if you want to specify the compressed filename
-- `path`: the path of the already extracted json (if 'path' is chosen as source)
-- `dump_filename`: the absolute file reference of the dump
-- `solr_address`: the address of the Solr server (if running in local, keep it as it is),
+Then, chose if you want to work with an already extracted dump file or directly with the compressed dump. You'll have to specify some parameters: 
+- __source__: can be 'path' if you want to specify the extracted path or 'compressed' if you want to specify the compressed filename
+- __path__: the path of the already extracted json (if 'path' is chosen as source)
+- __dump_filename__: the absolute file reference of the dump
+- __solr_address__: the address of the Solr server (if running in local, keep it as it is),
 
 So if you want to run it on an folder where it can find all the extracted jsons:
-`python3.5 ETL_Crossref.py "/full/path/to/extracted" 'path' '' "http://localhost:8983/solr/crossref"`
+`python3 ETL_Crossref.py "/full/path/to/extracted" 'path' '' "http://localhost:8983/solr/crossref"`
 
 If you want to run it on an compressed dump:
-`python3.5 ETL_Crossref.py "" 'compressed' '/full/path/to/crossdump.tar.gz' "http://localhost:8983/solr/crossref"`
+`python3 ETL_Crossref.py "" 'compressed' '/full/path/to/crossdump.tar.gz' "http://localhost:8983/solr/crossref"`
 
 
 ### How to start ETL Orcid
 As for the ETL Crossref, be sure that Solr is up and running.
+You'll have to specify some parameters:
+- __output_path__: is the path where the output will be stored
+- __summaries_dump_absolute_reference__: the absolute path to ORCID's summaries dump.
 
-You'll have to specify some parameters ETL_Orcid, setting the reference to the «SUMMARIES» dump downloaded from Orcid
-and the output path.
-
-Run it with `$ python3 ETL_Orcid.py <parameters>` and have another big break. Better to run this overnight.
+Run it with `$ python3 ETL_Orcid.py <output_path> <summaries_dump_absolute_reference> ` and have another big break. Better to run this overnight.
 
 
 ---
